@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { MAX_USERS, SYNTHETIC_TAG, localPart, cleanupId, credentials, plan, classify, addressingMode, emailFor, parseBase } from './identity.mjs';
+import { MAX_USERS, SYNTHETIC_TAG, MIN_PASSWORD_LENGTH, generatePassword, localPart, cleanupId, credentials, plan, classify, unrenderedReason, addressingMode, emailFor, parseBase } from './identity.mjs';
 import { scanPaths, scanPublishSet } from './scan.mjs';
 
 const env = { QA_RUN_ID: 'run12345', QA_EMAIL_DOMAIN: 'qa-sink.example.com' };
@@ -109,4 +109,81 @@ test('signup spec attempts submit exactly once and blocks payment surfaces', () 
   assert.equal((spec.match(/\.click\(/g) || []).length, 1, 'single submit attempt, no blind retry');
   assert.match(spec, /PAYMENT\.test\(url\.pathname\)/);
   assert.doesNotMatch(spec, /retries/);
+});
+
+// --- REGRESSION: SPA hydration race must not be reported as a closed signup ---
+
+test('a hydration timeout yields form_not_rendered, never registration_closed', () => {
+  // What the browser actually sees when the Vue SPA has not mounted yet: nothing.
+  assert.equal(unrenderedReason(''), 'form_not_rendered');
+  assert.equal(unrenderedReason('   \n  '), 'form_not_rendered');
+  // Page rendered, but with unrelated marketing copy: still not evidence of closure.
+  assert.equal(unrenderedReason('Circle — One platform. Three personas.'), 'form_not_rendered');
+  assert.notEqual(unrenderedReason(''), 'registration_closed');
+});
+
+test('genuine invite/waitlist wording still maps to registration_closed', () => {
+  for (const text of [
+    'Registration is invite only',
+    'Join the waitlist',
+    'We are not accepting new signups',
+    'Closed registration',
+  ]) {
+    assert.equal(unrenderedReason(text), 'registration_closed', text);
+    assert.equal(classify({ visibleText: text }).reason, 'registration_closed', text);
+  }
+});
+
+test('signup spec waits for hydration before concluding and never hardcodes registration_closed', () => {
+  const spec = fs.readFileSync(new URL('./browser/signup.spec.mjs', import.meta.url), 'utf8');
+  // The instantaneous count()-based verdict is gone.
+  assert.doesNotMatch(spec, /count\(\)\s*===\s*0\s*\|\|/);
+  assert.doesNotMatch(spec, /reason:\s*'registration_closed'/, 'reason must be derived, never asserted literally');
+  assert.match(spec, /toBeVisible\(\{\s*timeout/, 'must use a web-first wait with a timeout');
+  assert.match(spec, /unrenderedReason\(/);
+  // Safety properties preserved.
+  assert.match(spec, /GITHUB_ACTIONS/);
+  assert.match(spec, /routeWebSocket/);
+  assert.match(spec, /navAllow\.has\(url\.pathname\)/);
+  assert.match(spec, /url\.origin !== origin/);
+  assert.match(spec, /gate\(process\.env\)\.allowed/);
+});
+
+test('public spec waits for SPA mount on every page check', () => {
+  const spec = fs.readFileSync(new URL('./browser/public.spec.mjs', import.meta.url), 'utf8');
+  // Three hydration waits: visit(), catalog home, plus per-control timeouts.
+  assert.ok((spec.match(/not\.toBeEmpty\(\{timeout:HYDRATION_TIMEOUT\}\)/g) || []).length >= 2);
+  assert.ok((spec.match(/toBeVisible\(\{timeout:HYDRATION_TIMEOUT\}\)/g) || []).length >= 5);
+  // The bare instantaneous catalog-link check is gone.
+  assert.doesNotMatch(spec, /test\.skip\(await link\.count\(\)===0/);
+  assert.match(spec, /routeWebSocket/);
+  assert.match(spec, /gate\(process\.env\)\.allowed/);
+});
+
+test('name field is matched resiliently, without the volatile auto-generated ids', () => {
+  const spec = fs.readFileSync(new URL('./browser/signup.spec.mjs', import.meta.url), 'utf8');
+  assert.match(spec, /getByLabel\(\/full\\s\*name\/i\)/);
+  assert.match(spec, /placeholder="Annie Duffy"/);
+  // v-4/v-5/v-6 are Vue-generated and change between builds: never hardcode them.
+  assert.doesNotMatch(spec, /["'#]v-[456]\b/);
+});
+
+test('generated passwords satisfy the observed Min 12 characters policy', () => {
+  assert.equal(MIN_PASSWORD_LENGTH, 12);
+  for (let i = 0; i < 50; i++) assert.ok(generatePassword().length >= MIN_PASSWORD_LENGTH);
+  for (let i = 0; i < MAX_USERS; i++) {
+    assert.ok(credentials(i, env).password.length >= MIN_PASSWORD_LENGTH);
+  }
+  // A too-short injected secret is rejected in favour of a compliant generated one.
+  const short = credentials(0, { ...env, QA_USER_1_PASSWORD: 'short' });
+  assert.notEqual(short.password, 'short');
+  assert.ok(short.password.length >= MIN_PASSWORD_LENGTH);
+});
+
+test('form_not_rendered is publishable and the four-user cap still holds', async () => {
+  const { sanitize } = await import('./report.mjs');
+  const result = sanitize([{ label: 'signup_user_1', status: 'BLOCKED', reason: 'form_not_rendered' }]);
+  assert.equal(result.cases.find(c => c.label === 'signup_user_1').reason, 'form_not_rendered');
+  assert.equal(result.max_users, 4);
+  assert.equal(result.cases.find(c => c.label === 'payment').status, 'BLOCKED');
 });
