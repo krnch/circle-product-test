@@ -70,7 +70,7 @@ test('publish is write-scoped, concurrency-guarded and gated behind the secret s
   assert.match(browser, /QA_RETENTION: '14'/);
   assert.ok(!/branch: *main|refs\/heads\/main/.test(browser), 'must not publish to default branch');
   // Secrets are injected as env, never literals.
-  for (const key of ['QA_EMAIL_DOMAIN', 'QA_USER_1_PASSWORD', 'QA_USER_4_PASSWORD']) {
+  for (const key of ['QA_EMAIL_BASE', 'QA_EMAIL_DOMAIN', 'QA_USER_1_PASSWORD', 'QA_USER_4_PASSWORD']) {
     assert.ok(browser.includes(`${key}: \${{ secrets.${key} }}`), key);
   }
 });

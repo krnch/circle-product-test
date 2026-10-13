@@ -22,7 +22,19 @@ Public repository: https://github.com/krnch/circle-product-test
 
 ## Automated harness boundaries (enforced in code)
 - `qa/screenshots.mjs` is the ONLY path to a publishable screenshot. It accepts the literal context `public`, rejects non-allowlisted routes, and refuses capture when the browser context holds a session cookie. `qa/browser/signup.spec.mjs` does not import it, so authenticated/raw evidence has no code path into `qa-output/`.
-- `qa/identity.mjs` builds at most four synthetic identities. Passwords come from Actions secrets (`QA_USER_n_PASSWORD`) or are generated at run time; the email domain comes from `QA_EMAIL_DOMAIN`. Nothing is hardcoded and only `{index, local_part, synthetic}` is recorded for cleanup.
+- `qa/identity.mjs` builds at most four synthetic identities. Passwords come from Actions secrets (`QA_USER_n_PASSWORD`) or are generated at run time. Nothing is hardcoded and only `{index, local_part, synthetic}` is recorded for cleanup.
+
+### Email addressing modes
+
+The synthetic local part is always `circle-qa-synthetic-<runid>-<n>`. How it becomes a deliverable address depends on configuration, in this strict precedence order:
+
+1. **Mode A — plus-addressing (preferred).** `QA_EMAIL_BASE` (e.g. a Gmail mailbox we control) produces `<base-local>+circle-qa-synthetic-<runid>-<n>@<base-domain>`. All four addresses land in one inbox we own, so email-verification links are actually receivable. The base is validated strictly (single `@`, no existing `+` tag, no whitespace, valid TLD); malformed input throws `blocked: 'malformed_email_base'` and never silently falls back.
+2. **Mode B — custom domain (unchanged).** If `QA_EMAIL_BASE` is absent and `QA_EMAIL_DOMAIN` is set, addresses are `circle-qa-synthetic-<runid>-<n>@<domain>`.
+3. **Neither set — BLOCKED.** `blocked: 'missing_email_domain'`. No fallback address is ever invented; sending QA mail to a stranger's mailbox is not an acceptable degradation.
+
+Mode C (disposable mailbox APIs such as mail.tm) was investigated and **rejected, not implemented**: the service is free and keyless but its domains are on public disposable-domain blocklists that signup flows commonly reject, account creation is rate-limited to roughly one per 60s per IP, mailboxes are ephemeral, and its terms require attribution. Mode A is strictly better for receiving real verification mail.
+
+Generated addresses — including plus-addresses, which embed a real mailbox name — are sensitive. The `qa/scan.mjs` email rule matches them, so they fail the pre-publish gate if they ever leak into a published artifact; this is covered by a test.
 - Registration submits exactly once per user. Captcha, email verification, rate limiting, closed registration and 5xx are reported as BLOCKED with the observed reason. No retries, no fabricated PASS.
 - `qa/scan.mjs` scans the sanitized report and every screenshot filename and byte stream for emails, JWTs, bearer/GitHub/AWS tokens, private keys, cookies, passwords and Luhn-valid card numbers. A finding fails the job before publish.
 - `qa/publish.sh` publishes only to the dedicated `qa-results` branch, never the default branch, with `[skip ci]`, deterministic `runs/<run_id>-<attempt>/` names and a 14-run retention cap applied to a force-pushed single-commit history.
