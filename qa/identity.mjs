@@ -7,6 +7,17 @@ import crypto from 'node:crypto';
 
 export const MAX_USERS = 4;
 export const SYNTHETIC_TAG = 'circle-qa-synthetic';
+// Observed site policy (register form placeholder: "Min 12 characters").
+export const MIN_PASSWORD_LENGTH = 12;
+
+// Always >= MIN_PASSWORD_LENGTH with upper/lower/digit/symbol present, so the
+// harness never attributes a client-side policy rejection to the product.
+export function generatePassword() {
+  const body = crypto.randomBytes(18).toString('base64url').replace(/[^A-Za-z0-9]/g, '');
+  const generated = `Qa!7${body}`.padEnd(MIN_PASSWORD_LENGTH + 4, 'x');
+  if (generated.length < MIN_PASSWORD_LENGTH) throw new Error('generated secret violates minimum length policy');
+  return generated;
+}
 
 // Obvious-to-a-human synthetic marker, stable per run id so cleanup is possible.
 export function runId(env = process.env) {
@@ -72,9 +83,12 @@ export function emailFor(index, env = process.env) {
 export function credentials(index, env = process.env) {
   const email = emailFor(index, env);
   const injected = env[`QA_USER_${index + 1}_PASSWORD`];
-  const password = injected && injected.length >= 12
+  // Site policy is visible in the register form placeholder: "Min 12 characters".
+  // Generated secrets are padded well past that floor and asserted below, so a
+  // policy rejection can never be mistaken for a product defect.
+  const password = injected && injected.length >= MIN_PASSWORD_LENGTH
     ? injected
-    : `Qa!${crypto.randomBytes(18).toString('base64url')}`;
+    : generatePassword();
   return {
     email,
     password,
@@ -90,11 +104,17 @@ export function plan(count, env = process.env) {
 }
 
 // Classify an observed registration outcome. Never invents a pass.
+//
+// Wording that actually evidences a closed signup. ONLY this may yield
+// 'registration_closed'. A missing/unhydrated form must never map here.
+export const CLOSED_REGISTRATION_RE = /invite|waitlist|not accepting|closed registration/i;
+
 const BLOCKERS = [
   [/captcha|recaptcha|hcaptcha|turnstile/i, 'captcha_challenge'],
   [/verify your email|verification (email|link)|confirm your email/i, 'email_verification_required'],
   [/too many|rate limit|slow down|try again later/i, 'rate_limited'],
-  [/invite|waitlist|not accepting|closed registration/i, 'registration_closed'],
+  // Single source of truth, shared with unrenderedReason().
+  [CLOSED_REGISTRATION_RE, 'registration_closed'],
   [/accept the terms|must agree to|consent required/i, 'consent_required'],
 ];
 export function classify({ visibleText = '', status = 0, navigatedTo = '' } = {}) {
@@ -104,4 +124,15 @@ export function classify({ visibleText = '', status = 0, navigatedTo = '' } = {}
   if (/^\/(dashboard|home|app|account|onboarding)/.test(navigatedTo)) return { status: 'PASS', reason: 'registered' };
   if (/error|invalid|failed|already (exists|registered)/i.test(visibleText)) return { status: 'FAIL', reason: 'registration_rejected' };
   return { status: 'BLOCKED', reason: 'no_authenticated_state_observed' };
+}
+
+// Wording that actually evidences a closed signup. Only this may yield
+// 'registration_closed'.
+
+// Decides why a registration form was not usable, AFTER a genuine hydration wait
+// has already timed out. A timeout alone is never evidence of a closed signup:
+// getcircle.chat is a client-rendered SPA whose initial HTML contains no form
+// markup at all, so "no inputs yet" means "not rendered yet", nothing more.
+export function unrenderedReason(visibleText = '') {
+  return CLOSED_REGISTRATION_RE.test(visibleText) ? 'registration_closed' : 'form_not_rendered';
 }

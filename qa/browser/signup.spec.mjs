@@ -3,7 +3,13 @@
 // authenticated/raw evidence has no code path into the publishable directory.
 import { test, expect } from '@playwright/test';
 import { gate } from '../guard.mjs';
-import { MAX_USERS, credentials, plan, classify, cleanupId } from '../identity.mjs';
+import { MAX_USERS, MIN_PASSWORD_LENGTH, credentials, plan, classify, cleanupId, unrenderedReason } from '../identity.mjs';
+
+// getcircle.chat is a client-rendered Vue SPA: GET /register returns only
+// <div id="app"></div> plus module scripts, with zero form markup. Any check that
+// runs at 'domcontentloaded' therefore sees no inputs and must NOT conclude
+// anything about registration being open or closed. Wait for hydration first.
+const HYDRATION_TIMEOUT = 15000;
 
 const origin = 'https://getcircle.chat';
 const navAllow = new Set(['/', '/login', '/register', '/catalog', '/products', '/dashboard', '/home', '/app', '/account', '/onboarding', '/logout']);
@@ -56,13 +62,40 @@ for (const index of indices) {
 
     const email = page.locator('input[type="email"]').first();
     const password = page.locator('input[type="password"]').first();
-    const name = page.locator('input[name*="name" i], input[id*="name" i]').first();
-    if (await email.count() === 0 || await password.count() === 0) {
-      await emit(testInfo, { status: 'BLOCKED', reason: 'registration_closed', cleanup });
-      test.skip(true, 'registration form not present');
+    // Resilient full-name strategy, in descending order of stability:
+    //   1. accessible label text ("Full Name") — the label is bound via for=/id=,
+    //      so getByLabel survives the auto-generated v-N ids entirely;
+    //   2. the observed placeholder ("Annie Duffy");
+    //   3. structural fallback: the first bare text input inside the form.
+    // The real DOM has EMPTY name attributes and volatile ids (v-4/v-5/v-6), so the
+    // previous input[name*="name"], input[id*="name"] selector could never match,
+    // and hardcoding v-4 would break on the next build.
+    const name = page.getByLabel(/full\s*name/i)
+      .or(page.locator('input[placeholder="Annie Duffy"]'))
+      .or(page.locator('form input[type="text"]'))
+      .or(page.locator('input[name*="name" i], input[id*="name" i]'))
+      .first();
+
+    // Genuine web-first wait for SPA hydration. ONLY after this times out may the
+    // harness report BLOCKED, and the reason is then 'form_not_rendered' unless the
+    // page actually says invite/waitlist/closed.
+    let hydrated = true;
+    try {
+      await expect(email).toBeVisible({ timeout: HYDRATION_TIMEOUT });
+      await expect(password).toBeVisible({ timeout: HYDRATION_TIMEOUT });
+    } catch {
+      hydrated = false;
+    }
+    if (!hydrated) {
+      const visibleText = (await page.locator('body').innerText().catch(() => '')).slice(0, 4000);
+      await emit(testInfo, { status: 'BLOCKED', reason: unrenderedReason(visibleText), cleanup });
+      test.skip(true, 'registration form did not render');
       return;
     }
+
     if (await name.count() > 0) await name.fill(creds.fullName);
+    // Observed policy: "Min 12 characters". Fail loudly rather than blame the product.
+    expect(creds.password.length).toBeGreaterThanOrEqual(MIN_PASSWORD_LENGTH);
     await email.fill(creds.email);
     await password.fill(creds.password);
 

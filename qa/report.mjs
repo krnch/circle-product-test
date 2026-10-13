@@ -11,7 +11,7 @@ const ALL = {...routes, ...userRoutes};
 const ALWAYS_BLOCKED = new Set(['payment']);
 const STATUSES = ['PASS','FAIL','BLOCKED','NOT_RUN'];
 // Only these blocker reasons may surface publicly; anything else is collapsed.
-const REASONS = new Set(['captcha_challenge','email_verification_required','rate_limited','registration_closed','consent_required','no_authenticated_state_observed','registration_rejected','registered','missing_email_domain','not_run','gate_closed','server_error_500','server_error_502','server_error_503']);
+const REASONS = new Set(['captcha_challenge','email_verification_required','rate_limited','registration_closed','form_not_rendered','consent_required','no_authenticated_state_observed','registration_rejected','registered','missing_email_domain','not_run','gate_closed','server_error_500','server_error_502','server_error_503']);
 
 export function sanitize(input = []) {
   const cases = Object.entries(ALL).map(([label,route])=>{
