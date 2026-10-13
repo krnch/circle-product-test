@@ -5,4 +5,7 @@ accounts/
 *session*
 *cookie*
 raw-evidence/
+qa-output/
+reports/
+BUILD_HASHES.sha256
 __pycache__/

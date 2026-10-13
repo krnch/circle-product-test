@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { gate } from '../guard.mjs';
+import { capturePublic } from '../screenshots.mjs';
 const origin='https://getcircle.chat';
 const allowed=new Set(['/','/login','/register','/catalog','/products']);
 test.beforeEach(async({page})=>{
@@ -18,6 +19,8 @@ async function visit(page,path){
   const response=await page.goto(origin+path,{waitUntil:'domcontentloaded'});
   expect(response?.ok()).toBe(true);
   expect(new URL(page.url()).pathname).toBe(path);
+  // Unauthenticated context only: capturePublic refuses a session-bearing context.
+  await capturePublic(page,path);
 }
 test('login_ui',async({page})=>{
   await visit(page,'/login');
