@@ -1,0 +1,1 @@
+{"name":"circle-public-qa","private":true,"version":"0.1.0","type":"module","scripts":{"test":"node --test qa/*.test.mjs","qa":"playwright test"},"devDependencies":{"@playwright/test":"1.56.1"},"engines":{"node":"22.22.2"}}

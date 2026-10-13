@@ -1,0 +1,71 @@
+name: Bounded public QA
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: circle-public-qa
+  cancel-in-progress: false
+jobs:
+  unit:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.22.2'
+      - name: Local guard, sanitizer and workflow boundary tests only
+        run: npm test
+      - name: Local syntax checks only
+        run: |
+          for file in qa/*.mjs qa/browser/*.mjs playwright.config.mjs; do
+            node --check "$file" || exit 1
+          done
+  browser:
+    if: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      QA_ENABLED: ${{ vars.QA_ENABLED }}
+      QA_STARTED_AT: ${{ vars.QA_STARTED_AT }}
+      QA_EXPIRES_AT: ${{ vars.QA_EXPIRES_AT }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.22.2'
+      - name: Fail-closed 24-hour window gate
+        id: gate
+        run: |
+          node --input-type=module -e "import fs from 'node:fs'; import {gate} from './qa/guard.mjs'; const ok=gate(process.env).allowed; fs.appendFileSync(process.env.GITHUB_OUTPUT,'enabled='+ok+'\n');"
+      - name: Initialize honest NOT_RUN and BLOCKED receipt
+        run: node qa/report.mjs
+      - name: Install pinned runner dependency
+        if: steps.gate.outputs.enabled == 'true'
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install browser on GitHub runner only
+        if: steps.gate.outputs.enabled == 'true'
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Public GET UI only
+        if: steps.gate.outputs.enabled == 'true'
+        run: npm run qa
+      - name: Fixed-label final summary
+        if: always()
+        run: node qa/report.mjs --summary
+      - name: Sanitized receipt only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: public-qa-results
+          path: qa-output/results.json
+          retention-days: 1
+          if-no-files-found: error

@@ -1,0 +1,8 @@
+private/
+accounts/
+.env*
+*credentials*
+*session*
+*cookie*
+raw-evidence/
+__pycache__/
