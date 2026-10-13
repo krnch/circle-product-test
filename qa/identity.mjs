@@ -33,16 +33,50 @@ function requireDomain(env) {
   return domain.toLowerCase();
 }
 
+// Strict base-address validation for plus-addressing. Deliberately conservative:
+// a single @, no sub-addressing already present, no whitespace/quoting/unicode.
+const BASE_RE = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/i;
+
+export function parseBase(raw) {
+  const base = String(raw ?? '').trim();
+  if (!base || base.includes('+') || !BASE_RE.test(base)) {
+    throw Object.assign(new Error('QA_EMAIL_BASE absent or malformed'), { blocked: 'malformed_email_base' });
+  }
+  const at = base.lastIndexOf('@');
+  return { local: base.slice(0, at).toLowerCase(), domain: base.slice(at + 1).toLowerCase() };
+}
+
+// MODE A: plus-addressing onto a mailbox we control (deliverable, verification links receivable).
+// MODE B: dedicated QA_EMAIL_DOMAIN. Otherwise: honest BLOCKED, never an invented stranger's inbox.
+export function addressingMode(env = process.env) {
+  if (env.QA_EMAIL_BASE) return 'plus_address';
+  if (env.QA_EMAIL_DOMAIN) return 'custom_domain';
+  return 'none';
+}
+
+export function emailFor(index, env = process.env) {
+  const local = localPart(index, env);
+  const mode = addressingMode(env);
+  if (mode === 'plus_address') {
+    const { local: baseLocal, domain } = parseBase(env.QA_EMAIL_BASE);
+    return `${baseLocal}+${local}@${domain}`;
+  }
+  if (mode === 'custom_domain') return `${local}@${requireDomain(env)}`;
+  throw Object.assign(
+    new Error('no addressing mode configured: set QA_EMAIL_BASE (plus-addressing) or QA_EMAIL_DOMAIN'),
+    { blocked: 'missing_email_domain' },
+  );
+}
+
 // Builds in-memory credentials. NEVER persist the return value.
 export function credentials(index, env = process.env) {
-  const local = localPart(index, env);
-  const domain = requireDomain(env);
+  const email = emailFor(index, env);
   const injected = env[`QA_USER_${index + 1}_PASSWORD`];
   const password = injected && injected.length >= 12
     ? injected
     : `Qa!${crypto.randomBytes(18).toString('base64url')}`;
   return {
-    email: `${local}@${domain}`,
+    email,
     password,
     fullName: `QA Synthetic ${index + 1}`,
     cleanup: cleanupId(index, env),

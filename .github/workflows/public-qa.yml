@@ -44,6 +44,7 @@ jobs:
       QA_ENABLED: ${{ vars.QA_ENABLED }}
       QA_STARTED_AT: ${{ vars.QA_STARTED_AT }}
       QA_EXPIRES_AT: ${{ vars.QA_EXPIRES_AT }}
+      QA_EMAIL_BASE: ${{ secrets.QA_EMAIL_BASE }}
       QA_EMAIL_DOMAIN: ${{ secrets.QA_EMAIL_DOMAIN }}
       QA_USER_1_PASSWORD: ${{ secrets.QA_USER_1_PASSWORD }}
       QA_USER_2_PASSWORD: ${{ secrets.QA_USER_2_PASSWORD }}
