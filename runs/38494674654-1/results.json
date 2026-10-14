@@ -1,0 +1,66 @@
+{
+  "schema": 2,
+  "runner": "deterministic_playwright_not_ai",
+  "cases": [
+    {
+      "label": "login_ui",
+      "route": "/login",
+      "status": "PASS"
+    },
+    {
+      "label": "register_ui",
+      "route": "/register",
+      "status": "PASS"
+    },
+    {
+      "label": "catalog_ui",
+      "route": "/",
+      "status": "BLOCKED"
+    },
+    {
+      "label": "signup_submit",
+      "route": "/register",
+      "status": "NOT_RUN"
+    },
+    {
+      "label": "authenticated_journey",
+      "route": "/login",
+      "status": "NOT_RUN"
+    },
+    {
+      "label": "payment",
+      "route": "/",
+      "status": "BLOCKED"
+    },
+    {
+      "label": "signup_user_1",
+      "route": "/register",
+      "status": "BLOCKED",
+      "reason": "email_verification_required"
+    },
+    {
+      "label": "signup_user_2",
+      "route": "/register",
+      "status": "BLOCKED",
+      "reason": "email_verification_required"
+    },
+    {
+      "label": "signup_user_3",
+      "route": "/register",
+      "status": "BLOCKED",
+      "reason": "email_verification_required"
+    },
+    {
+      "label": "signup_user_4",
+      "route": "/register",
+      "status": "BLOCKED",
+      "reason": "email_verification_required"
+    }
+  ],
+  "accounts": [],
+  "screenshots": [
+    "login.png",
+    "register.png"
+  ],
+  "max_users": 4
+}
