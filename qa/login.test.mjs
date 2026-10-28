@@ -36,12 +36,15 @@ test('auth cases report BLOCKED missing_credentials, never FAIL, and never leak 
 test('login spec reads only env, takes no screenshots and never logs credentials', () => {
   const spec = fs.readFileSync(new URL('./browser/login.spec.mjs', import.meta.url), 'utf8').replace(/^\s*\/\/.*$/gm, '');
   assert.doesNotMatch(spec, /screenshot|screenshots\.mjs|storageState|console\.log|readFileSync|circleqa\.env/);
-  assert.match(spec, /reason: 'missing_credentials'/);
+  assert.match(spec, /reason: 'missing_credentials'|'missing_credentials'/);
+  assert.match(spec, /gate\(process\.env\)\.allowed/, 'live login must be gated by the QA window');
 });
 
 test('QA_OUTPUT_DIR must be outside the repo', () => {
   assert.throws(() => outputDir({ QA_OUTPUT_DIR: new URL('../qa-output', import.meta.url).pathname }));
   assert.throws(() => outputDir({ QA_OUTPUT_DIR: new URL('..', import.meta.url).pathname }));
+  assert.throws(() => outputDir({ QA_OUTPUT_DIR: new URL('../..evidence', import.meta.url).pathname }));
+  assert.throws(() => outputDir({ QA_OUTPUT_DIR: new URL('../qa/..x', import.meta.url).pathname }));
   const tmp = path.join(os.tmpdir(), 'cqa-out');
   assert.equal(outputDir({ QA_OUTPUT_DIR: tmp }), tmp);
   assert.ok(!outputDir({}).startsWith(new URL('..', import.meta.url).pathname));

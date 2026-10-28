@@ -9,7 +9,8 @@ export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url
 export function outputDir(env = process.env) {
   const dir = path.resolve(env.QA_OUTPUT_DIR || path.join(os.tmpdir(), 'circle-qa-output'));
   const rel = path.relative(REPO_ROOT, dir);
-  if (rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))) {
+  const outside = path.isAbsolute(rel) || rel === '..' || rel.startsWith('..' + path.sep);
+  if (!outside) {
     throw new Error('QA_OUTPUT_DIR must be outside the repository');
   }
   return dir;
