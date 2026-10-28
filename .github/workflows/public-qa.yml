@@ -1,12 +1,11 @@
 name: Bounded public QA
-# NO-LOOP: there is deliberately no `push` trigger. The workflow cannot be started by
-# its own commits to the qa-results branch. Published commits additionally carry
-# [skip ci] as defence in depth.
+# DISABLED ON PURPOSE (disabled_manually in GitHub). Do not re-enable.
+# This repo is PUBLIC and holds code only: no step may publish results, screenshots,
+# reports or step summaries to the repo, its branches, artifacts or Actions UI.
+# Results go to $QA_OUTPUT_DIR outside the checkout and are discarded with the runner.
 on:
   pull_request:
   workflow_dispatch:
-  schedule:
-    - cron: '17 * * * *'
 permissions:
   contents: read
 concurrency:
@@ -32,24 +31,14 @@ jobs:
             node --check "$file" || exit 1
           done
   browser:
-    if: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    permissions:
-      contents: write
-    concurrency:
-      group: circle-public-qa-publish
-      cancel-in-progress: false
     env:
       QA_ENABLED: ${{ vars.QA_ENABLED }}
       QA_STARTED_AT: ${{ vars.QA_STARTED_AT }}
       QA_EXPIRES_AT: ${{ vars.QA_EXPIRES_AT }}
-      QA_EMAIL_BASE: ${{ secrets.QA_EMAIL_BASE }}
-      QA_EMAIL_DOMAIN: ${{ secrets.QA_EMAIL_DOMAIN }}
-      QA_USER_1_PASSWORD: ${{ secrets.QA_USER_1_PASSWORD }}
-      QA_USER_2_PASSWORD: ${{ secrets.QA_USER_2_PASSWORD }}
-      QA_USER_3_PASSWORD: ${{ secrets.QA_USER_3_PASSWORD }}
-      QA_USER_4_PASSWORD: ${{ secrets.QA_USER_4_PASSWORD }}
+      QA_OUTPUT_DIR: ${{ runner.temp }}/circle-qa-output
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -61,8 +50,6 @@ jobs:
         id: gate
         run: |
           node --input-type=module -e "import fs from 'node:fs'; import {gate} from './qa/guard.mjs'; const ok=gate(process.env).allowed; fs.appendFileSync(process.env.GITHUB_OUTPUT,'enabled='+ok+'\n');"
-      - name: Initialize honest NOT_RUN and BLOCKED receipt
-        run: node qa/report.mjs
       - name: Install pinned runner dependency
         if: steps.gate.outputs.enabled == 'true'
         run: npm ci --ignore-scripts --no-audit --no-fund
@@ -72,25 +59,3 @@ jobs:
       - name: Public GET UI only
         if: steps.gate.outputs.enabled == 'true'
         run: npm run qa
-      - name: Fixed-label final summary
-        if: always()
-        run: node qa/report.mjs --summary
-      - name: Secret and PII scan gate
-        if: always()
-        run: node qa/scan.mjs
-      - name: Publish sanitized results to qa-results branch
-        if: ${{ always() && steps.gate.outputs.enabled == 'true' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          QA_STAMP: ${{ github.run_id }}-${{ github.run_attempt }}
-          QA_RETENTION: '14'
-        run: bash qa/publish.sh
-      - name: Sanitized receipt only
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: public-qa-results
-          path: qa-output/results.json
-          retention-days: 1
-          if-no-files-found: error

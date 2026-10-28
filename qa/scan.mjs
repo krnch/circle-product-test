@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { listPublished } from './screenshots.mjs';
+import { resultsPath } from './output.mjs';
 
 export const RULES = [
   ['email', /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi],
@@ -57,7 +58,7 @@ export function scanPaths(paths) {
   return findings;
 }
 
-export function scanPublishSet({ report = 'qa-output/results.json', screenshots = listPublished() } = {}) {
+export function scanPublishSet({ report = resultsPath(), screenshots = listPublished() } = {}) {
   const findings = scanPaths([report, ...screenshots]);
   return { ok: findings.length === 0, count: findings.length, findings };
 }

@@ -51,10 +51,12 @@ test('listPublished only returns png files under the publish dir', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-shot-'));
   try {
     process.chdir(tmp);
+    process.env.QA_OUTPUT_DIR = path.join(tmp, 'out');
+    const dir = path.join(tmp, 'out', 'screenshots');
     assert.deepEqual(listPublished(), []);
-    fs.mkdirSync(PUBLISH_DIR, { recursive: true });
-    fs.writeFileSync(path.join(PUBLISH_DIR, 'login.png'), 'x');
-    fs.writeFileSync(path.join(PUBLISH_DIR, 'notes.txt'), 'x');
-    assert.deepEqual(listPublished(), [path.join(PUBLISH_DIR, 'login.png')]);
-  } finally { process.chdir(cwd); fs.rmSync(tmp, { recursive: true, force: true }); }
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'login.png'), 'x');
+    fs.writeFileSync(path.join(dir, 'notes.txt'), 'x');
+    assert.deepEqual(listPublished(), [path.join(dir, 'login.png')]);
+  } finally { delete process.env.QA_OUTPUT_DIR; process.chdir(cwd); fs.rmSync(tmp, { recursive: true, force: true }); }
 });

@@ -1,9 +1,11 @@
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { MAX_USERS } from './identity.mjs';
+import path from 'node:path';
 import { listPublished } from './screenshots.mjs';
+import { outputDir, resultsPath } from './output.mjs';
 
-const routes = {login_ui:'/login',register_ui:'/register',catalog_ui:'/',signup_submit:'/register',authenticated_journey:'/login',payment:'/'};
+const routes = {login_ui:'/login',register_ui:'/register',catalog_ui:'/',signup_submit:'/register',authenticated_journey:'/login',payment:'/',auth_login:'/login',auth_browse:'/',auth_reload:'/',auth_logout:'/logout'};
 const userRoutes = Object.fromEntries(Array.from({length:MAX_USERS},(_,i)=>[`signup_user_${i+1}`,'/register']));
 const ALL = {...routes, ...userRoutes};
 // Payment/billing stays BLOCKED unconditionally; signup_submit/authenticated_journey
@@ -11,7 +13,7 @@ const ALL = {...routes, ...userRoutes};
 const ALWAYS_BLOCKED = new Set(['payment']);
 const STATUSES = ['PASS','FAIL','BLOCKED','NOT_RUN'];
 // Only these blocker reasons may surface publicly; anything else is collapsed.
-const REASONS = new Set(['captcha_challenge','email_verification_required','rate_limited','registration_closed','form_not_rendered','consent_required','no_authenticated_state_observed','registration_rejected','registered','missing_email_domain','not_run','gate_closed','server_error_500','server_error_502','server_error_503']);
+const REASONS = new Set(['captcha_challenge','email_verification_required','rate_limited','registration_closed','form_not_rendered','consent_required','no_authenticated_state_observed','registration_rejected','registered','missing_credentials','missing_email_domain','not_run','gate_closed','server_error_500','server_error_502','server_error_503']);
 
 export function sanitize(input = []) {
   const cases = Object.entries(ALL).map(([label,route])=>{
@@ -33,16 +35,17 @@ export function sanitize(input = []) {
     cases,
     // Cleanup identifiers only: no addresses, passwords, cookies or tokens.
     accounts,
-    screenshots: listPublished().map(p=>p.split('/').pop()),
+    screenshots: listPublished().map(p=>path.basename(p)),
     max_users: MAX_USERS,
   };
 }
 
 export function save(input = []) {
  const result=sanitize(input);
- fs.mkdirSync('qa-output',{recursive:true});
- fs.writeFileSync('qa-output/results.json',JSON.stringify(result,null,2)+'\n');
- if(process.env.GITHUB_STEP_SUMMARY && process.argv.includes('--summary')) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,'## Public-only QA (not authenticated coverage)\n'+result.cases.map(c=>`- ${c.label}: **${c.status}**${c.reason?` (${c.reason})`:''} (${c.route})`).join('\n')+'\nPayment sandbox remains BLOCKED.\n');
+ fs.mkdirSync(outputDir(),{recursive:true});
+ fs.writeFileSync(resultsPath(),JSON.stringify(result,null,2)+'\n');
+ // Local summary only (stdout); never written to GitHub step summaries or the repo.
+ if(process.argv.includes('--summary')) console.log(result.cases.map(c=>`${c.label}: ${c.status}${c.reason?` (${c.reason})`:''}`).join('\n'));
 }
 
 export default class Reporter {
@@ -57,6 +60,6 @@ export default class Reporter {
 }
 
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
- const input=process.argv.includes('--summary') && fs.existsSync('qa-output/results.json') ? JSON.parse(fs.readFileSync('qa-output/results.json','utf8')).cases : [];
+ const input=process.argv.includes('--summary') && fs.existsSync(resultsPath()) ? JSON.parse(fs.readFileSync(resultsPath(),'utf8')).cases : [];
  save(input);
 }

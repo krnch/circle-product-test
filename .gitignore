@@ -1,11 +1,36 @@
 private/
 accounts/
+.env
 .env*
+*.env
 *credentials*
 *session*
 *cookie*
+*storageState*
 raw-evidence/
 qa-output/
 reports/
+test-results/
+playwright-report/
+blob-report/
+*.png
+*.jpg
+*.webm
+*.zip
+*.har
+*.log
 BUILD_HASHES.sha256
 __pycache__/
+node_modules/
+# Squad: ignore runtime state (logs, inbox, sessions)
+# Note: .squad/casting/* is identity and MUST be committed to main, not ignored
+.squad/orchestration-log/
+.squad/log/
+.squad/decisions/inbox/
+.squad/sessions/
+.squad/.scratch/
+.squad/.cache/
+# Squad: SubSquad activation file (local to this machine)
+.squad-workstream
+# Local MCP/Copilot config may hold tokens; never commit it
+.copilot/
