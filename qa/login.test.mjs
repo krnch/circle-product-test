@@ -48,6 +48,13 @@ test('QA_OUTPUT_DIR must be outside the repo', () => {
   assert.throws(() => outputDir({ QA_OUTPUT_DIR: new URL('../..evidence', import.meta.url).pathname }));
   assert.throws(() => outputDir({ QA_OUTPUT_DIR: new URL('../qa/..x', import.meta.url).pathname }));
   const tmp = path.join(os.tmpdir(), 'cqa-out');
+  // A symlink outside the repo that points into the checkout must be rejected.
+  const link = fs.mkdtempSync(path.join(os.tmpdir(), 'cqa-link-'));
+  try {
+    fs.symlinkSync(new URL('..', import.meta.url).pathname, path.join(link, 'repo'));
+    assert.throws(() => outputDir({ QA_OUTPUT_DIR: path.join(link, 'repo') }));
+    assert.throws(() => outputDir({ QA_OUTPUT_DIR: path.join(link, 'repo', 'new', 'deep') }));
+  } finally { fs.rmSync(link, { recursive: true, force: true }); }
   assert.equal(outputDir({ QA_OUTPUT_DIR: tmp }), tmp);
   assert.ok(!outputDir({}).startsWith(new URL('..', import.meta.url).pathname));
 });
