@@ -4,11 +4,14 @@
 export const QUALITY_PAGES = ['/', '/login', '/register'];
 export const PERF_BUDGET_MS = { domContentLoaded: 10000, load: 20000 };
 
-// Console noise that is not a product defect (blocked by our own request routing,
-// favicon, browser extensions). Anything else counts as an error.
-const IGNORED = [/net::ERR_FAILED/i, /ERR_BLOCKED_BY_CLIENT/i, /favicon/i, /Failed to load resource/i];
-export function realConsoleErrors(messages = []) {
-  return messages.filter(m => typeof m === 'string' && !IGNORED.some(re => re.test(m)));
+// Console noise that is not a product defect: requests WE aborted via routing
+// (passed in as blockedUrls) and favicon. Everything else, including genuine
+// "Failed to load resource" 404/500s, counts as an error.
+const IGNORED = [/favicon/i];
+export function realConsoleErrors(messages = [], blockedUrls = []) {
+  return messages.filter(m => typeof m === 'string'
+    && !IGNORED.some(re => re.test(m))
+    && !(/net::ERR_FAILED|ERR_BLOCKED_BY_CLIENT/i.test(m) && blockedUrls.some(u => m.includes(u))));
 }
 
 // nav: a PerformanceNavigationTiming-like object. Returns {ok, domContentLoaded, load}.

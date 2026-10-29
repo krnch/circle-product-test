@@ -4,8 +4,18 @@ import fs from 'node:fs';
 import { realConsoleErrors, checkTiming, a11yIssues, PERF_BUDGET_MS } from './quality.mjs';
 import { sanitize } from './report.mjs';
 
-test('console filter drops our own routing noise but keeps real errors', () => {
-  assert.deepEqual(realConsoleErrors(['Failed to load resource: net::ERR_FAILED', 'TypeError: x is undefined', 42]), ['TypeError: x is undefined']);
+test('console filter drops only failures of requests we blocked; real 404/500 stay', () => {
+  const blocked = ['https://evil.example/x.js'];
+  assert.deepEqual(realConsoleErrors([
+    'Failed to load resource: net::ERR_FAILED https://evil.example/x.js',
+    'Failed to load resource: the server responded with a status of 404 ()',
+    'Failed to load resource: net::ERR_FAILED https://getcircle.chat/app.js',
+    'TypeError: x is undefined', 42,
+  ], blocked), [
+    'Failed to load resource: the server responded with a status of 404 ()',
+    'Failed to load resource: net::ERR_FAILED https://getcircle.chat/app.js',
+    'TypeError: x is undefined',
+  ]);
 });
 
 test('timing check uses navigation entry relative to startTime and fails closed', () => {

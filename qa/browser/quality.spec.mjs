@@ -8,12 +8,15 @@ const origin = 'https://getcircle.chat';
 const HYDRATION_TIMEOUT = 15000;
 const allowed = new Set(['/', '/login', '/register', '/catalog', '/products']);
 
+const blockedUrls = [];
 test.beforeEach(async ({ page }) => {
+  blockedUrls.length = 0;
   await page.route('**/*', route => {
     const req = route.request();
     const url = new URL(req.url());
     const safe = req.method() === 'GET' && url.origin === origin && !url.search
       && (!req.isNavigationRequest() || allowed.has(url.pathname));
+    if (!safe) blockedUrls.push(req.url());
     return safe ? route.continue() : route.abort();
   });
   await page.routeWebSocket('**/*', socket => socket.close());
@@ -34,10 +37,10 @@ test('console_errors', async ({ page }, testInfo) => {
     return;
   }
   const seen = [];
-  page.on('console', m => { if (m.type() === 'error') seen.push(m.text()); });
+  page.on('console', m => { if (m.type() === 'error') seen.push(`${m.text()} ${m.location()?.url || ''}`); });
   page.on('pageerror', e => seen.push(`pageerror: ${e.message}`));
   for (const path of QUALITY_PAGES) await open(page, path);
-  const errors = realConsoleErrors(seen);
+  const errors = realConsoleErrors(seen, blockedUrls);
   expect(errors, `console errors: ${errors.length}`).toEqual([]);
 });
 
