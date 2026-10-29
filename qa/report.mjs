@@ -9,9 +9,17 @@ import { outputDir, resultsPath } from './output.mjs';
 const ALL = {login_ui:'/login',register_ui:'/register',signup_validation:'/register',catalog_ui:'/',console_errors:'/',perf_timings:'/',a11y_basics:'/login',navigation:'/register',payment:'/',auth_login:'/login',auth_browse:'/',auth_reload:'/dashboard',auth_logout:'/logout'};
 // Payment/billing stays BLOCKED unconditionally.
 const ALWAYS_BLOCKED = new Set(['payment']);
-const STATUSES = ['PASS','FAIL','BLOCKED','NOT_RUN'];
+const STATUSES = ['PASS','FAIL','BLOCKED','NOT_RUN','KNOWN'];
 // Only these blocker reasons may surface; anything else is collapsed.
-const REASONS = new Set(['rate_limited','form_not_rendered','missing_credentials','not_run','gate_closed','ci_not_allowed','vm_only','server_error_500','server_error_502','server_error_503']);
+const REASONS = new Set(['rate_limited','form_not_rendered','missing_credentials','not_run','gate_closed','ci_not_allowed','vm_only','auth_only_route','login_rejected','no_error_shown','known_site_issue','server_error_500','server_error_502','server_error_503']);
+const KNOWN_IDS = /^[a-z0-9_]{1,60}$/;
+
+// Free text from the page (e.g. a login error) is re-redacted here: no emails, capped.
+function safeDetail(d) {
+  if (typeof d !== 'string') return undefined;
+  const out = d.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]').replace(/\s+/g, ' ').trim().slice(0, 160);
+  return out || undefined;
+}
 
 export function sanitize(input = []) {
   const cases = Object.entries(ALL).map(([label,route])=>{
@@ -21,6 +29,9 @@ export function sanitize(input = []) {
     const entry = {label,route,status};
     const reason = typeof found?.reason === 'string' && REASONS.has(found.reason) ? found.reason : undefined;
     if (reason) entry.reason = reason;
+    const detail = safeDetail(found?.detail);
+    if (detail && status === 'FAIL') entry.detail = detail;
+    if (Array.isArray(found?.known)) entry.known = found.known.filter(k => typeof k === 'string' && KNOWN_IDS.test(k));
     return entry;
   });
   return {
@@ -50,7 +61,7 @@ export default class Reporter {
   const attached=(result.attachments||[]).find(a=>a.name==='qa-case');
   let extra={};
   if(attached?.body){ try{ extra=JSON.parse(attached.body.toString('utf8')); }catch{ extra={}; } }
-  this.results.push({label:test.title,status:extra.status||(result.status==='passed'?'PASS':result.status==='skipped'?'BLOCKED':'FAIL'),reason:extra.reason,cleanup:extra.cleanup});
+  this.results.push({label:test.title,status:extra.status||(result.status==='passed'?'PASS':result.status==='skipped'?'BLOCKED':'FAIL'),reason:extra.reason,detail:extra.detail,known:extra.known});
  }
  onEnd(result) {if(result.status!=='passed' && !this.results.some(c=>c.status==='FAIL')) this.results.push({label:'login_ui',status:'FAIL'}); save(this.results);}
 }
