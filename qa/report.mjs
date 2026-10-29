@@ -61,6 +61,12 @@ export default class Reporter {
   const attached=(result.attachments||[]).find(a=>a.name==='qa-case');
   let extra={};
   if(attached?.body){ try{ extra=JSON.parse(attached.body.toString('utf8')); }catch{ extra={}; } }
+  // A journey test reports several independent steps (one shared browser session).
+  const steps=(result.attachments||[]).filter(a=>a.name==='qa-step');
+  if(steps.length){
+   for(const s of steps){ try{ const v=JSON.parse(s.body.toString('utf8')); this.results.push({label:v.label,status:v.status,reason:v.reason,detail:v.detail}); }catch{} }
+   return;
+  }
   this.results.push({label:test.title,status:extra.status||(result.status==='passed'?'PASS':result.status==='skipped'?'BLOCKED':'FAIL'),reason:extra.reason,detail:extra.detail,known:extra.known});
  }
  onEnd(result) {if(result.status!=='passed' && !this.results.some(c=>c.status==='FAIL')) this.results.push({label:'login_ui',status:'FAIL'}); save(this.results);}
