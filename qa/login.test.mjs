@@ -16,6 +16,27 @@ test('login comes only from env; missing or partial env yields null (BLOCKED)', 
   assert.deepEqual(loginEnv({ CIRCLE_QA_EMAIL: ' a ', CIRCLE_QA_PASSWORD: 'b' }), { email: 'a', password: 'b' });
 });
 
+test('payment block never aborts same-origin static bundles (cart-*.js killed the SPA)', async () => {
+  const { isPaymentRequest } = await import('./login.mjs');
+  const u = p => new URL(p, origin);
+  assert.equal(isPaymentRequest(u('/assets/cart-CC4hSkp1.js'), origin, false), false);
+  assert.equal(isPaymentRequest(u('/assets/stripe-COzZ6Zt2.js'), origin, false), false);
+  assert.equal(isPaymentRequest(u('/cart'), origin, true), true);
+  assert.equal(isPaymentRequest(u('/api/v1/orders/1'), origin, false), true);
+  assert.equal(isPaymentRequest(u('/api/v1/payments'), origin, false), true);
+  assert.equal(isPaymentRequest(new URL('https://js.stripe.com/v3/'), origin, false), true);
+  assert.equal(isPaymentRequest(new URL('https://api.stripe.com/x'), origin, false), true);
+  assert.equal(isPaymentRequest(u('/api/v1/auth/login'), origin, false), false);
+  // Non-navigation, non-/api/ payment paths stay blocked (e.g. XHR POST /checkout).
+  assert.equal(isPaymentRequest(u('/checkout'), origin, false), true);
+  assert.equal(isPaymentRequest(u('/billing'), origin, false), true);
+  assert.equal(isPaymentRequest(u('/assets/cart/checkout'), origin, false), true, 'non-static under /assets/ is not exempt');
+  assert.equal(isPaymentRequest(u('/assets/cart-CC4hSkp1.js'), origin, false, 'POST'), true, 'only GET bundles are exempt');
+  const spec = fs.readFileSync(new URL('./browser/login.spec.mjs', import.meta.url), 'utf8').replace(/^\s*\/\/.*$/gm, '');
+  assert.doesNotMatch(spec, /PAYMENT\.test\(url\.pathname\)/);
+  assert.doesNotMatch(spec, /tracing\.start|trace:/, 'no trace: it would capture the typed login');
+});
+
 test('navigation allowlist blocks payment, foreign origins and unknown paths', () => {
   // Post-login landing (/dms) and the logged-in catalog must be navigable.
   for (const p of ['/dms', '/explore/shops', '/explore/groups', '/me', '/']) assert.equal(isAllowedNavigation(new URL(origin + p), origin), true, p);

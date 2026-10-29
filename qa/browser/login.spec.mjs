@@ -15,7 +15,7 @@
 // the worker after any failed test, which would drop a shared login across tests;
 // here a failed step is recorded and the journey continues with the next step.
 import { test, expect } from '@playwright/test';
-import { loginEnv, HOME, CATALOG_PATHS, BROWSE_PATHS, PAYMENT, isAllowedNavigation, redact, SUBMIT } from '../login.mjs';
+import { loginEnv, HOME, CATALOG_PATHS, BROWSE_PATHS, isPaymentRequest, isAllowedNavigation, redact, SUBMIT } from '../login.mjs';
 import { gate } from '../guard.mjs';
 import { isCI } from '../ci.mjs';
 
@@ -55,14 +55,17 @@ test('auth_journey', async ({ browser }, testInfo) => {
   page.setDefaultTimeout(HYDRATION_TIMEOUT);
   page.setDefaultNavigationTimeout(HYDRATION_TIMEOUT);
   const blockedNav = [];
+  const blockedReq = [];
   await page.routeWebSocket('**/*', socket => socket.close());
   await page.route('**/*', route => {
     const req = route.request();
     const url = new URL(req.url());
     // Re-check the window on every request; abort everything once it closes.
     if (!gate(process.env).allowed) return route.abort();
-    // Hard-block payment/billing/cart/orders everywhere.
-    if (PAYMENT.test(url.pathname)) return route.abort();
+    // Hard-block payment navigations/API calls and payment hosts (not static bundles).
+    // Aborted paths (no query, no body) are kept so a FAIL says what we blocked.
+    // No Playwright trace here: it would record the typed password and login body.
+    if (isPaymentRequest(url, origin, req.isNavigationRequest(), req.method())) { blockedReq.push(url.hostname === new URL(origin).hostname ? url.pathname : url.hostname); return route.abort(); }
     if (req.isNavigationRequest() && req.frame() === page.mainFrame() && !isAllowedNavigation(url, origin)) {
       // Record (path only) so a blocked post-login redirect is visible in the report.
       blockedNav.push(url.pathname);
@@ -94,7 +97,9 @@ test('auth_journey', async ({ browser }, testInfo) => {
       await report(label, 'PASS');
     } catch (e) {
       const reason = e instanceof StepFailure ? e.reason : undefined;
-      const detail = e instanceof StepFailure ? e.detail : String(e?.message || e).split('\n')[0];
+      const raw = e instanceof StepFailure ? e.detail : String(e?.message || e).replace(/\u001b\[[0-9;]*m/g, '').split('\n')[0];
+      const blocked = [...new Set(blockedReq)].slice(0, 5);
+      const detail = blocked.length ? `${raw} blocked_req=${blocked.join(',')}` : raw;
       failures.push(label);
       await report(label, 'FAIL', reason, detail);
       if (reason === 'step_timeout') {
