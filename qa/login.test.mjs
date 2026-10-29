@@ -17,7 +17,9 @@ test('login comes only from env; missing or partial env yields null (BLOCKED)', 
 });
 
 test('navigation allowlist blocks payment, foreign origins and unknown paths', () => {
-  assert.equal(isAllowedNavigation(new URL(origin + '/dashboard'), origin), true);
+  // Post-login landing (/dms) and the logged-in catalog must be navigable.
+  for (const p of ['/dms', '/explore/shops', '/explore/groups', '/me', '/']) assert.equal(isAllowedNavigation(new URL(origin + p), origin), true, p);
+  for (const p of ['/orders', '/money', '/dms/new']) assert.equal(isAllowedNavigation(new URL(origin + p), origin), false, p);
   for (const u of ['/checkout', '/billing', '/admin', 'https://evil.example/']) {
     assert.equal(isAllowedNavigation(new URL(u, origin), origin), false, u);
   }

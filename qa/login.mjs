@@ -1,8 +1,13 @@
 // Pure helpers for the authenticated login journey (unit-tested without a browser).
-export const ALLOWED_PATHS = ['/', '/login', '/catalog', '/products', '/dashboard', '/home', '/app', '/account', '/logout'];
-// Routes the authenticated browse case must load (catalog/product browsing per QA_SCOPE.md).
-export const BROWSE_PATHS = ['/', '/catalog', '/products'];
-export const PAYMENT = /pay|checkout|billing|subscri|invoice|card|stripe|plan|upgrade/i;
+// Routes taken from the site's own router (2026-10-29): after sign-in the app does
+// window.location.replace(redirect || '/dms') - a FULL navigation that must be allowed.
+// '/' redirects to /dms. Catalog = /explore/shops (+ /explore/groups). Log out lives on /me.
+export const HOME = '/dms';
+export const CATALOG_PATHS = ['/explore/shops', '/explore/groups'];
+export const ALLOWED_PATHS = ['/', '/login', HOME, '/explore', ...CATALOG_PATHS, '/me', '/sessions'];
+// Routes the authenticated browse case must load (home + catalog browsing per QA_SCOPE.md).
+export const BROWSE_PATHS = [HOME, ...CATALOG_PATHS, '/sessions'];
+export const PAYMENT = /pay|checkout|billing|subscri|invoice|card|stripe|plan|upgrade|cart|orders|money/i;
 
 // Returns {email,password} or null. Never logs, never falls back to files or defaults.
 export function loginEnv(env = process.env) {
@@ -12,7 +17,7 @@ export function loginEnv(env = process.env) {
 }
 
 export function isAllowedNavigation(url, origin) {
-  return url.origin === origin && ALLOWED_PATHS.includes(url.pathname) && !PAYMENT.test(url.pathname);
+  return url.origin === origin && ALLOWED_PATHS.includes(url.pathname.replace(/\/$/, '') || '/') && !PAYMENT.test(url.pathname);
 }
 
 // Accessible name of the real login submit button (observed: "Sign in").
