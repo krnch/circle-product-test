@@ -56,6 +56,9 @@ test('auth_journey', async ({ browser }, testInfo) => {
   page.setDefaultNavigationTimeout(HYDRATION_TIMEOUT);
   const blockedNav = [];
   const blockedReq = [];
+  // Auth API status codes (path + status only, never bodies/headers) to explain a lost session.
+  const authCalls = [];
+  page.on('response', r => { const p = new URL(r.url()).pathname; if (p.startsWith('/api/v1/auth/')) authCalls.push(`${p.replace('/api/v1/auth/', '')}:${r.status()}`); });
   await page.routeWebSocket('**/*', socket => socket.close());
   await page.route('**/*', route => {
     const req = route.request();
@@ -99,7 +102,8 @@ test('auth_journey', async ({ browser }, testInfo) => {
       const reason = e instanceof StepFailure ? e.reason : undefined;
       const raw = e instanceof StepFailure ? e.detail : String(e?.message || e).replace(/\u001b\[[0-9;]*m/g, '').split('\n')[0];
       const blocked = [...new Set(blockedReq)].slice(0, 5);
-      const detail = blocked.length ? `${raw} blocked_req=${blocked.join(',')}` : raw;
+      let detail = blocked.length ? `${raw} blocked_req=${blocked.join(',')}` : raw;
+      detail += ` url=${new URL(page.url()).pathname} auth=${authCalls.slice(-6).join(',') || 'none'}`;
       failures.push(label);
       await report(label, 'FAIL', reason, detail);
       if (reason === 'step_timeout') {
@@ -167,7 +171,12 @@ test('auth_journey', async ({ browser }, testInfo) => {
 
     await step('auth_reload', true, async () => {
       // Reload a PROTECTED route; the session must survive with a positive auth marker.
+      // Settle first: reloading while the page's own token refresh is in flight aborts
+      // that request after the server has already rotated the (single-use) refresh
+      // token, which then 401s on the reload and looks like a lost session.
       await page.goto(origin + HOME, { waitUntil: 'domcontentloaded' });
+      await expectAuthenticated();
+      await page.waitForLoadState('networkidle', { timeout: HYDRATION_TIMEOUT }).catch(() => {});
       await page.reload({ waitUntil: 'domcontentloaded' });
       await expectAuthenticated();
       await expect(page).toHaveURL(/\/dms$/);
@@ -179,6 +188,10 @@ test('auth_journey', async ({ browser }, testInfo) => {
         .or(page.getByRole('button', { name: LOGOUT })).first();
       await expect(control).toBeVisible({ timeout: HYDRATION_TIMEOUT });
       await control.click();
+      // The site asks "Log out?" in a confirm dialog before signing out; accept it.
+      const dialog = page.getByRole('alertdialog').or(page.getByRole('dialog')).filter({ hasText: /log out/i }).first();
+      await expect(dialog).toBeVisible({ timeout: HYDRATION_TIMEOUT });
+      await dialog.getByRole('button', { name: /^\s*(yes|log ?out|confirm|ok)\s*$/i }).first().click();
       await expect(page).toHaveURL(/\/login/, { timeout: HYDRATION_TIMEOUT });
       // After logout, a protected page must lead back to the login form.
       await page.goto(origin + HOME, { waitUntil: 'domcontentloaded' }).catch(() => null);

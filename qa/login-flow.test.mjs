@@ -40,6 +40,16 @@ test('every browse route checks for a hydrated 404 page', () => {
   assert.match(browse, /getByText\(NOT_FOUND\)\)\.toHaveCount\(0\)/);
 });
 
+test('reload waits for the session to settle; logout accepts the confirm dialog', () => {
+  const reload = spec.slice(spec.indexOf("step('auth_reload'"), spec.indexOf("step('auth_logout'"));
+  assert.match(reload, /waitForLoadState\('networkidle'/);
+  assert.ok(reload.indexOf('networkidle') < reload.indexOf('page.reload('), 'settle before reload');
+  const logout = spec.slice(spec.indexOf("step('auth_logout'"));
+  assert.match(logout, /getByRole\('alertdialog'\)/);
+  assert.match(logout, /dialog\.getByRole\('button'/);
+  assert.match(spec, /authCalls\.push\(`\$\{p\.replace/, 'only auth path + status recorded');
+});
+
 test('catalog_ui runs after login via the in-app Explore link', () => {
   assert.match(spec, /a\[href="\$\{CATALOG_PATHS\[0\]\}"\]/);
 });
