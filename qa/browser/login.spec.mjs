@@ -21,12 +21,15 @@ import { isCI } from '../ci.mjs';
 
 const origin = 'https://getcircle.chat';
 const HYDRATION_TIMEOUT = 15000;
-const STEP_TIMEOUT = 45000;
+// Hard per-step budget: a stalled action can never eat the next steps' time.
+// 5 steps x 25s + setup = 140s test timeout, inside the 420s global run timeout.
+const STEP_TIMEOUT = 25000;
 // Logged-in QA is VM-only: in CI the login is never even read from env.
 const creds = isCI() ? null : loginEnv(process.env);
 // Credentials alone never enable a live login: the fail-closed QA window must be open too.
 const live = () => !isCI() && Boolean(creds) && gate(process.env).allowed;
 const LOGOUT = /^\s*(log ?out|sign ?out)\s*$/i;
+const NOT_FOUND = /\b404\b|not found|page doesn.t exist/i;
 const STEPS = ['auth_login', 'auth_browse', 'catalog_ui', 'auth_reload', 'auth_logout'];
 
 class StepFailure extends Error {
@@ -34,7 +37,7 @@ class StepFailure extends Error {
 }
 
 test('auth_journey', async ({ browser }, testInfo) => {
-  test.setTimeout(STEPS.length * STEP_TIMEOUT + 30000);
+  test.setTimeout(STEPS.length * STEP_TIMEOUT + 15000);
   const report = (label, status, reason, detail) => testInfo.attach('qa-step', {
     body: Buffer.from(JSON.stringify({ label, status, reason, detail: detail ? redact(detail, creds || {}) : undefined })),
     contentType: 'application/json',
@@ -49,6 +52,8 @@ test('auth_journey', async ({ browser }, testInfo) => {
 
   const context = await browser.newContext();
   const page = await context.newPage();
+  page.setDefaultTimeout(HYDRATION_TIMEOUT);
+  page.setDefaultNavigationTimeout(HYDRATION_TIMEOUT);
   const blockedNav = [];
   await page.routeWebSocket('**/*', socket => socket.close());
   await page.route('**/*', route => {
@@ -79,14 +84,20 @@ test('auth_journey', async ({ browser }, testInfo) => {
   let loggedIn = false;
   async function step(label, needsLogin, body) {
     if (needsLogin && !loggedIn) { await report(label, 'BLOCKED', 'login_failed'); return; }
+    let timer;
+    const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(new StepFailure('step_timeout', `${label} exceeded ${STEP_TIMEOUT}ms`)), STEP_TIMEOUT); });
     try {
-      await body();
+      await Promise.race([body(), deadline]);
       await report(label, 'PASS');
     } catch (e) {
       const reason = e instanceof StepFailure ? e.reason : undefined;
       const detail = e instanceof StepFailure ? e.detail : String(e?.message || e).split('\n')[0];
       failures.push(label);
       await report(label, 'FAIL', reason, detail);
+      // Stop any still-running navigation of the timed-out step before the next one.
+      await page.goto('about:blank', { timeout: 5000 }).catch(() => {});
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -126,6 +137,8 @@ test('auth_journey', async ({ browser }, testInfo) => {
         if (!res?.ok()) throw new StepFailure(undefined, `HTTP ${res?.status() ?? 'none'} for ${path}`);
         await expectAuthenticated();
         await expect(page).toHaveURL(new RegExp(path.replace(/\//g, '\\/') + '$'));
+        // A SPA error page can keep HTTP 200, the URL and the shell: check the content too.
+        await expect(page.getByText(NOT_FOUND)).toHaveCount(0);
       }
     });
 
@@ -136,7 +149,7 @@ test('auth_journey', async ({ browser }, testInfo) => {
       await page.locator(`a[href="${CATALOG_PATHS[0]}"]`).first().click();
       await expect(page).toHaveURL(/\/explore\/shops$/, { timeout: HYDRATION_TIMEOUT });
       await expect(page.locator('#app')).not.toBeEmpty();
-      await expect(page.getByText(/\b404\b|not found|page doesn.t exist/i)).toHaveCount(0);
+      await expect(page.getByText(NOT_FOUND)).toHaveCount(0);
     });
 
     await step('auth_reload', true, async () => {

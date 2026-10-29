@@ -22,6 +22,21 @@ test('one journey test keeps the session; dependents are BLOCKED login_failed', 
   assert.match(spec, /'BLOCKED', 'login_failed'/);
 });
 
+test('each step has a hard timeout and the journey fits the global budget', () => {
+  assert.match(spec, /Promise\.race\(\[body\(\), deadline\]\)/);
+  const step = Number(spec.match(/const STEP_TIMEOUT = (\d+)/)[1]);
+  const cfg = fs.readFileSync(new URL('../playwright.config.mjs', import.meta.url), 'utf8');
+  const global = Number(cfg.match(/globalTimeout:(\d+)/)[1]);
+  const testTimeout = 5 * step + 15000;
+  // Journey + the other ~8 logged-out tests (30s worst case each) must fit.
+  assert.ok(testTimeout + 8 * 30000 <= global, `${testTimeout} + others > ${global}`);
+});
+
+test('every browse route checks for a hydrated 404 page', () => {
+  const browse = spec.slice(spec.indexOf("step('auth_browse'"), spec.indexOf("step('catalog_ui'"));
+  assert.match(browse, /getByText\(NOT_FOUND\)\)\.toHaveCount\(0\)/);
+});
+
 test('catalog_ui runs after login via the in-app Explore link', () => {
   assert.match(spec, /a\[href="\$\{CATALOG_PATHS\[0\]\}"\]/);
 });
