@@ -15,10 +15,12 @@ export const PAYMENT_HOSTS = /(^|\.)stripe\.(com|network)$/i;
 // page navigations and API calls only - NOT to same-origin static /assets/ bundles.
 // Root cause of the 2026-10-29 17:09Z FAIL: /assets/cart-*.js (a core module imported
 // by the entry bundle) matched /cart/, was aborted, and the SPA never mounted (#app empty).
-export function isPaymentRequest(url, origin, isNavigation) {
+export function isPaymentRequest(url, origin, isNavigation, method = 'GET') {
   if (PAYMENT_HOSTS.test(url.hostname)) return true;
-  if (url.origin === origin && url.pathname.startsWith('/assets/')) return false;
-  return (isNavigation || url.pathname.startsWith('/api/')) && PAYMENT.test(url.pathname);
+  // Only GET same-origin static bundles are exempt; everything else (any other method,
+  // any non-/assets/ path, navigation or XHR) is still matched against PAYMENT.
+  if (method === 'GET' && url.origin === origin && url.pathname.startsWith('/assets/') && /\.(js|css|woff2?|png|svg|jpe?g|webp|ico)$/i.test(url.pathname)) return false;
+  return PAYMENT.test(url.pathname);
 }
 
 // Returns {email,password} or null. Never logs, never falls back to files or defaults.

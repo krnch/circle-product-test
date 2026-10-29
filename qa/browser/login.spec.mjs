@@ -65,7 +65,7 @@ test('auth_journey', async ({ browser }, testInfo) => {
     // Hard-block payment navigations/API calls and payment hosts (not static bundles).
     // Aborted paths (no query, no body) are kept so a FAIL says what we blocked.
     // No Playwright trace here: it would record the typed password and login body.
-    if (isPaymentRequest(url, origin, req.isNavigationRequest())) { blockedReq.push(url.hostname === new URL(origin).hostname ? url.pathname : url.hostname); return route.abort(); }
+    if (isPaymentRequest(url, origin, req.isNavigationRequest(), req.method())) { blockedReq.push(url.hostname === new URL(origin).hostname ? url.pathname : url.hostname); return route.abort(); }
     if (req.isNavigationRequest() && req.frame() === page.mainFrame() && !isAllowedNavigation(url, origin)) {
       // Record (path only) so a blocked post-login redirect is visible in the report.
       blockedNav.push(url.pathname);
