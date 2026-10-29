@@ -1,0 +1,56 @@
+name: CI
+# Hybrid CI for this PUBLIC repo: only work that needs NO login and produces NO private data.
+#  - unit tests (npm test)
+#  - logged-OUT public smoke (public.spec + validation-only signup.spec)
+# Output is pass/fail in the job summary only: no screenshots, no artifacts, no result
+# branches, no secrets. Logged-in QA never runs here: it is VM-only.
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.22.2'
+      - name: Unit tests
+        run: npm test
+      - name: Syntax checks
+        run: |
+          for file in qa/*.mjs qa/browser/*.mjs playwright.config.mjs; do
+            node --check "$file" || exit 1
+          done
+  public-smoke:
+    needs: unit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CI: 'true'
+      QA_OUTPUT_DIR: ${{ runner.temp }}/circle-qa-output
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.22.2'
+      - name: Install pinned dependency
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Logged-out public smoke
+        run: npx --no-install playwright test qa/browser/public.spec.mjs qa/browser/signup.spec.mjs
+      - name: Pass/fail summary
+        if: always()
+        run: node qa/report.mjs --summary --ci
