@@ -4,7 +4,7 @@
 // No screenshots, traces, cookies or credential values are ever written anywhere:
 // this module does not import qa/screenshots.mjs and never logs the login.
 import { test, expect } from '@playwright/test';
-import { loginEnv, ALLOWED_PATHS, PAYMENT, isAllowedNavigation } from '../login.mjs';
+import { loginEnv, BROWSE_PATHS, PAYMENT, isAllowedNavigation } from '../login.mjs';
 import { gate } from '../guard.mjs';
 
 const origin = 'https://getcircle.chat';
@@ -28,6 +28,7 @@ test.beforeAll(async ({ browser }) => {
   context = await browser.newContext();
   page = await context.newPage();
   page.on('console', m => { if (m.type() === 'error') consoleErrors.push(1); });
+  await page.routeWebSocket('**/*', socket => socket.close());
   await page.route('**/*', route => {
     const req = route.request();
     const url = new URL(req.url());
@@ -72,15 +73,15 @@ test('auth_login', async ({}, testInfo) => {
 
 test('auth_browse', async ({}, testInfo) => {
   if (await blockedIfNoCreds(testInfo)) return;
-  let visited = 0;
-  for (const path of ALLOWED_PATHS.filter(p => !['/login', '/register', '/logout'].includes(p))) {
-    const res = await page.goto(origin + path, { waitUntil: 'domcontentloaded' }).catch(() => null);
-    if (!res || res.status() >= 500) continue;
-    await expect(page.locator('#app')).not.toBeEmpty({ timeout: HYDRATION_TIMEOUT });
-    expect(new URL(page.url()).pathname).not.toBe('/login');
-    visited++;
+  // Every intended route must load successfully AND show authenticated content;
+  // a navigation failure, 4xx/5xx or a hydrated 404 page is a FAIL, not a skip.
+  for (const path of BROWSE_PATHS) {
+    const res = await page.goto(origin + path, { waitUntil: 'domcontentloaded' });
+    expect(res, `no response for ${path}`).not.toBeNull();
+    expect(res.ok(), `HTTP ${res.status()} for ${path}`).toBe(true);
+    await expectAuthenticated();
+    await expect(page.getByText(/\b404\b|not found|page doesn.t exist/i)).toHaveCount(0);
   }
-  expect(visited).toBeGreaterThan(0);
 });
 
 test('auth_reload', async ({}, testInfo) => {

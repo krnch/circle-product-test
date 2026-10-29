@@ -38,6 +38,8 @@ test('login spec reads only env, takes no screenshots and never logs credentials
   assert.doesNotMatch(spec, /screenshot|screenshots\.mjs|storageState|console\.log|readFileSync|circleqa\.env/);
   assert.match(spec, /reason: 'missing_credentials'|'missing_credentials'/);
   assert.match(spec, /gate\(process\.env\)\.allowed/, 'live login must be gated by the QA window');
+  assert.match(spec, /routeWebSocket\(/, 'websockets must be blocked like the other specs');
+  assert.doesNotMatch(spec, /\.catch\(\(\) => null\)\;\n\s*if \(!res/, 'navigation failures must not be skipped');
 });
 
 test('QA_OUTPUT_DIR must be outside the repo', () => {

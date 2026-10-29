@@ -5,6 +5,9 @@ accounts/
 *.env
 *credentials*
 *session*
+!.squad/templates/session-init-reference.md
+!.squad/templates/skills/session-recovery/
+!.github/skills/session-recovery/
 *cookie*
 *storageState*
 raw-evidence/
