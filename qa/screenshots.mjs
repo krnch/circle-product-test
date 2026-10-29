@@ -6,9 +6,12 @@
 // into any published artifact. qa/identity.mjs never imports this module.
 import fs from 'node:fs';
 import path from 'node:path';
+import { screenshotsDir } from './output.mjs';
 
 export const PUBLIC_ALLOWLIST = ['/', '/login', '/register', '/catalog', '/products'];
-export const PUBLISH_DIR = 'qa-output/screenshots';
+// Resolved from $QA_OUTPUT_DIR (always outside the repo) at call time.
+export const publishDir = () => screenshotsDir();
+export const PUBLISH_DIR = publishDir();
 // Raw/authenticated evidence, if ever captured, goes here. .gitignore excludes it and
 // the publish job never reads it.
 export const PRIVATE_DIR = 'raw-evidence';
@@ -21,7 +24,7 @@ export function slug(route) {
 // Returns the publishable path, or throws. `context` must be the literal 'public'.
 export function publishablePath(route, context) {
   if (context !== 'public') throw new Error(`refusing publishable screenshot for context=${context}: only unauthenticated public captures may be published`);
-  return path.join(PUBLISH_DIR, `${slug(route)}.png`);
+  return path.join(publishDir(), `${slug(route)}.png`);
 }
 
 export function isPublishable(route, context) {
@@ -36,12 +39,13 @@ export async function capturePublic(page, route) {
   if (cookies.some(c => /sess|auth|token|jwt|sid/i.test(c.name))) {
     throw new Error('refusing capture: browser context carries a session cookie');
   }
-  fs.mkdirSync(PUBLISH_DIR, { recursive: true });
+  fs.mkdirSync(publishDir(), { recursive: true });
   await page.screenshot({ path: file, fullPage: true, animations: 'disabled', caret: 'hide' });
   return file;
 }
 
 export function listPublished() {
-  if (!fs.existsSync(PUBLISH_DIR)) return [];
-  return fs.readdirSync(PUBLISH_DIR).filter(f => f.endsWith('.png')).sort().map(f => path.join(PUBLISH_DIR, f));
+  const dir = publishDir();
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).filter(f => f.endsWith('.png')).sort().map(f => path.join(dir, f));
 }

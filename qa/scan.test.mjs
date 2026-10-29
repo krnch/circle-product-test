@@ -37,6 +37,7 @@ test('scans screenshot file paths as well as their bytes', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-scan-'));
   try {
     process.chdir(tmp);
+    process.env.QA_OUTPUT_DIR = path.join(tmp, 'qa-output');
     fs.mkdirSync('qa-output/screenshots', { recursive: true });
     fs.writeFileSync('qa-output/results.json', '{"schema":2,"cases":[]}');
     fs.writeFileSync('qa-output/screenshots/login.png', Buffer.from('\x89PNG\r\n clean bytes'));
@@ -52,5 +53,5 @@ test('scans screenshot file paths as well as their bytes', () => {
     fs.rmSync('qa-output/screenshots/register.png');
     assert.equal(scanPublishSet().ok, true);
     assert.equal(scanPaths(['qa-output/screenshots/ghp_' + 'b'.repeat(36) + '.png']).length > 0, true);
-  } finally { process.chdir(cwd); fs.rmSync(tmp, { recursive: true, force: true }); }
+  } finally { delete process.env.QA_OUTPUT_DIR; process.chdir(cwd); fs.rmSync(tmp, { recursive: true, force: true }); }
 });
