@@ -3,7 +3,7 @@
 // RULE: a screenshot may only enter the publishable directory (qa-output/screenshots)
 // when it was taken from an UNAUTHENTICATED browser context on an allowlisted public
 // page. Authenticated / raw-session screenshots are refused here and have no code path
-// into any published artifact. qa/identity.mjs never imports this module.
+// into any published artifact. login.spec.mjs and signup.spec.mjs never import this module.
 import fs from 'node:fs';
 import path from 'node:path';
 import { screenshotsDir } from './output.mjs';

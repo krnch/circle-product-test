@@ -1,46 +1,27 @@
 # Circle Product Test
 
 Target: https://getcircle.chat
-Public repository: https://github.com/krnch/circle-product-test
+Public repository: https://github.com/krnch/circle-product-test (CODE ONLY)
 
 ## Authorized functional scope
-- At most four clearly synthetic test users, registered through the normal website UI.
-- Register, log in, browse available product/catalog pages, navigate, log out, return/reload, and verify each test user's own state.
-- Low-rate sequential flows; no load tests, endpoint guessing, exploit attempts, access-control bypass, or access to unrelated users' records.
+- ONE ACCOUNT ONLY. Every logged-in test uses the single pre-provisioned test account, supplied at run time via env `CIRCLE_QA_EMAIL` / `CIRCLE_QA_PASSWORD`. No other accounts are created or used.
+- Logged in: log in, browse available product/catalog pages, navigate, reload (session persists), log out.
+- Sign-up: form-validation checks only (field presence, browser-side validity). The form is NEVER submitted; non-GET requests are aborted. No synthetic users, no multi-user flows.
+- Low-rate sequential flows; no load tests, endpoint guessing, exploit attempts, access-control bypass, or access to other users' records.
 - No messages or notifications to other users, real purchases, merchant orders, identity verification, paid services, or billing activation.
-- Payment testing is BLOCKED until provider test mode is explicitly verified. The supplied 4242 test number is never a live payment method. Other card fields are not assumed from the postal code.
-- Existing synthetic New Jersey / 07305 location may be used only where needed; do not invent a real street address or person's identity.
+- Payment testing is BLOCKED until provider test mode is explicitly verified.
+
+## Where tests run (hybrid)
+- GitHub Actions (`.github/workflows/ci.yml`, on pull_request and push to main): `npm test` unit tests plus the logged-OUT public smoke (`public.spec.mjs`, validation-only `signup.spec.mjs`). Output is pass/fail in the job summary only: no screenshots, no artifacts, no result branches, no secrets.
+- VM only (circleqa agent): logged-IN QA (`login.spec.mjs`). It never runs in Actions; in CI it does not even read the login env and reports BLOCKED (`ci_not_allowed`).
 
 ## Evidence and public/private separation
-- Public artifacts: sanitized scope, test coverage, reproducible non-sensitive UX gaps, timestamps, honest PASS / FAIL / BLOCKED / NOT_RUN status.
-- Private artifacts: account addresses/passwords, cookies/session data, raw authenticated screenshots, sensitive implementation/security findings. Store outside this repository in a mode-0700 private directory; never commit or publish them.
-- Missing account verification/access/test mode is a blocker, not a pass. A page loading does not prove an end-to-end journey.
-- Record actual steps, expected vs actual behavior, console errors, and sanitized evidence references. Do not expose exploitable security details publicly.
+- The repo holds code only. Results, screenshots and reports go to `$QA_OUTPUT_DIR`, which `qa/output.mjs` forces to be outside the checkout (symlink-safe).
+- Private: the account login, cookies/session data, authenticated screenshots, sensitive findings. Never committed, published, logged or screenshotted.
+- Missing login, closed QA window, or missing test mode is BLOCKED, not PASS and not FAIL. A page loading does not prove an end-to-end journey.
 
-## Initial observed status
-2026-10-13 UTC: site login and registration pages inspected. Registration form exposes full name, email and password inputs. No accounts created and no checkout attempted by the initial setup turn. Four-user goal remains NOT_RUN.
-
-## Automated harness boundaries (enforced in code)
-- `qa/screenshots.mjs` is the ONLY path to a publishable screenshot. It accepts the literal context `public`, rejects non-allowlisted routes, and refuses capture when the browser context holds a session cookie. `qa/browser/signup.spec.mjs` does not import it, so authenticated/raw evidence has no code path into `$QA_OUTPUT_DIR`.
-- `qa/identity.mjs` builds at most four synthetic identities. Passwords come from Actions secrets (`QA_USER_n_PASSWORD`) or are generated at run time. Nothing is hardcoded and only `{index, local_part, synthetic}` is recorded for cleanup.
-
-### Email addressing modes
-
-The synthetic local part is always `circle-qa-synthetic-<runid>-<n>`. How it becomes a deliverable address depends on configuration, in this strict precedence order:
-
-1. **Mode A — plus-addressing (preferred).** `QA_EMAIL_BASE` (e.g. a Gmail mailbox we control) produces `<base-local>+circle-qa-synthetic-<runid>-<n>@<base-domain>`. All four addresses land in one inbox we own, so email-verification links are actually receivable. The base is validated strictly (single `@`, no existing `+` tag, no whitespace, valid TLD); malformed input throws `blocked: 'malformed_email_base'` and never silently falls back.
-2. **Mode B — custom domain (unchanged).** If `QA_EMAIL_BASE` is absent and `QA_EMAIL_DOMAIN` is set, addresses are `circle-qa-synthetic-<runid>-<n>@<domain>`.
-3. **Neither set — BLOCKED.** `blocked: 'missing_email_domain'`. No fallback address is ever invented; sending QA mail to a stranger's mailbox is not an acceptable degradation.
-
-Mode C (disposable mailbox APIs such as mail.tm) was investigated and **rejected, not implemented**: the service is free and keyless but its domains are on public disposable-domain blocklists that signup flows commonly reject, account creation is rate-limited to roughly one per 60s per IP, mailboxes are ephemeral, and its terms require attribution. Mode A is strictly better for receiving real verification mail.
-
-Generated addresses — including plus-addresses, which embed a real mailbox name — are sensitive. The `qa/scan.mjs` email rule matches them, so they fail the pre-publish gate if they ever leak into a published artifact; this is covered by a test.
-- Registration submits exactly once per user. Captcha, email verification, rate limiting, closed registration and 5xx are reported as BLOCKED with the observed reason. No retries, no fabricated PASS.
-- `qa/scan.mjs` scans the sanitized report and every screenshot filename and byte stream for emails, JWTs, bearer/GitHub/AWS tokens, private keys, cookies, passwords and Luhn-valid card numbers. A finding fails the job before anything leaves the run.
-- Nothing is published. Results and screenshots are written only to `$QA_OUTPUT_DIR` (outside the repo, enforced by `qa/output.mjs`); the former qa-results publish path was removed. The workflow stays disabled.
-- The workflow has no `push` or `schedule` trigger and is disabled in GitHub.
-
-## Overnight work
-Bounded scheduled QA rounds, at most one sequential flow per round, reuse only the four approved test users. Stop on authentication/payment/identity/terms uncertainty, site errors/rate limiting, or an active scope-specific safety hold. Do not create additional users or repeat failed registration blindly.
-
-Public updates require independent redaction review and the applicable publication gates; public repo creation is not blanket permission to publish private test data.
+## Automated harness boundaries (enforced in code and unit tests)
+- `qa/login.mjs` reads the login only from env; missing/partial env => BLOCKED (`missing_credentials`). Live login additionally requires the fail-closed `qa/guard.mjs` window (else `gate_closed`).
+- `qa/screenshots.mjs` is the only screenshot path: logged-out allowlisted pages only, refuses a session-bearing context, and is skipped entirely in CI. `login.spec.mjs` and `signup.spec.mjs` never take screenshots.
+- `qa/report.mjs` emits fixed labels and allowlisted reasons only; `qa/scan.mjs` scans results and screenshots for emails, tokens, cookies, passwords and card numbers.
+- Nothing is published: no publish script, no qa-results branch, no artifacts.

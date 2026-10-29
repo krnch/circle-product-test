@@ -1,62 +1,48 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 
-const workflow = readFileSync(new URL('../.github/workflows/public-qa.yml', import.meta.url), 'utf8');
-// Inspect this small dependency-free workflow without installing a YAML parser.
+const dir = new URL('../.github/workflows/', import.meta.url);
+const ci = readFileSync(new URL('ci.yml', dir), 'utf8').replace(/^\s*#.*$/gm, '');
 function job(name) {
-  const body = workflow.match(new RegExp(`^  ${name}:\\n([\\s\\S]*?)(?=^  [a-z][\\w-]*:|$(?![\\s\\S]))`, 'm'))?.[1];
-  assert.ok(body, `missing separate ${name} job`);
+  const body = ci.match(new RegExp(`^  ${name}:\\n([\\s\\S]*?)(?=^  [a-z][\\w-]*:|$(?![\\s\\S]))`, 'm'))?.[1];
+  assert.ok(body, `missing ${name} job`);
   return body;
 }
 
-test('browser job only runs on manual dispatch from the default branch', () => {
-  const browser = job('browser');
-  const expression = browser.match(/^    if: \$\{\{ (.*) \}\}$/m)?.[1];
-  assert.equal(expression, "github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)");
-  const allowed = new Function('github', 'format', `return ${expression};`);
-  for (const defaultBranch of ['main', 'release/stable']) {
-    for (const event of ['pull_request', 'pull_request_target', 'push', 'schedule', 'workflow_dispatch']) {
-      for (const ref of [`refs/heads/${defaultBranch}`, 'refs/heads/untrusted', 'refs/pull/1/merge']) {
-        assert.equal(allowed({ event_name: event, ref, event: { repository: { default_branch: defaultBranch } } }, (t, v) => t.replace('{0}', v)),
-          event === 'workflow_dispatch' && ref === `refs/heads/${defaultBranch}`, `${event} ${ref}`);
-      }
-    }
-  }
+test('only ci.yml exists; the old publishing workflow and Squad automation are gone', () => {
+  assert.deepEqual(readdirSync(dir).filter(f => /\.ya?ml$/.test(f)), ['ci.yml']);
+  assert.equal(existsSync(new URL('../qa/publish.sh', import.meta.url)), false);
 });
 
-test('PR job only performs unit and syntax checks', () => {
+test('ci.yml triggers only on pull_request and push to main', () => {
+  const triggers = ci.match(/^on:\n([\s\S]*?)^permissions:/m)[1];
+  assert.match(triggers, /^  pull_request:$/m);
+  assert.match(triggers, /^  push:\n    branches: \[main\]$/m);
+  assert.doesNotMatch(triggers, /schedule|workflow_dispatch|pull_request_target|issues|issue_comment|repository_dispatch/);
+});
+
+test('read-only, no secrets, no artifacts, no publishing, pinned actions only', () => {
+  assert.match(ci, /^permissions:\n  contents: read\n/m);
+  assert.doesNotMatch(ci, /secrets\.|vars\.|contents: write|upload-artifact|publish|qa-results|git push|GITHUB_TOKEN|CIRCLE_QA_|QA_ENABLED/);
+  for (const use of ci.matchAll(/uses: ([^\n]+)/g)) assert.match(use[1], /^actions\/(checkout|setup-node)@[a-f0-9]{40}$/);
+  assert.equal((ci.match(/persist-credentials: false/g) || []).length, 2);
+});
+
+test('unit job runs npm test and syntax checks', () => {
   const unit = job('unit');
   assert.match(unit, /run: npm test/);
   assert.match(unit, /node --check/);
-  assert.doesNotMatch(unit, /vars\.|secrets\.|npm ci|npm run qa|npx|upload-artifact/);
 });
 
-test('no trigger can start the workflow on its own (no push, no schedule)', () => {
-  const triggers = workflow.match(/^on:\n([\s\S]*?)^permissions:/m)[1];
-  assert.doesNotMatch(triggers, /^\s+(push|schedule|create|repository_dispatch|issues|issue_comment):/m);
-});
-
-test('nothing is published: read-only, no publish step, no artifacts, no step summary, no secrets', () => {
-  assert.match(workflow, /^permissions:\n  contents: read\n/m);
-  assert.doesNotMatch(workflow, /contents: write|publish\.sh|qa-results|upload-artifact|GITHUB_STEP_SUMMARY|GITHUB_TOKEN|secrets\./);
-  assert.equal(existsSync(new URL('./publish.sh', import.meta.url)), false, 'publish script must not exist');
-  for (const use of workflow.matchAll(/uses: ([^\n]+)/g)) assert.match(use[1], /^actions\/(checkout|setup-node)@[a-f0-9]{40}$/);
-  assert.equal((workflow.match(/persist-credentials: false/g) || []).length, 2);
-});
-
-test('browser job keeps the fail-closed gate and writes output outside the checkout', () => {
-  const browser = job('browser');
-  assert.match(browser, /gate\(process\.env\)\.allowed/);
-  for (const command of ['npm ci --ignore-scripts --no-audit --no-fund', 'npx --no-install playwright install --with-deps chromium', 'npm run qa']) {
-    assert.ok(browser.includes(`if: steps.gate.outputs.enabled == 'true'\n        run: ${command}`), `${command} must remain gated`);
-  }
-  assert.match(browser, /QA_OUTPUT_DIR: \$\{\{ runner\.temp \}\}/);
-});
-
-test('no Squad automation workflows (triage, issue-assign, heartbeat, release) are present', () => {
-  const dir = new URL('../.github/workflows/', import.meta.url);
-  for (const f of ['squad-triage.yml', 'squad-issue-assign.yml', 'squad-heartbeat.yml', 'squad-release.yml', 'sync-squad-labels.yml']) {
-    assert.equal(existsSync(new URL(f, dir)), false, f);
-  }
+test('public smoke runs only logged-out specs, never login.spec, output outside checkout', () => {
+  const smoke = job('public-smoke');
+  assert.match(smoke, /playwright test qa\/browser\/public\.spec\.mjs qa\/browser\/signup\.spec\.mjs/);
+  assert.doesNotMatch(ci, /login\.spec/);
+  assert.doesNotMatch(smoke, /npm run qa/);
+  assert.match(smoke, /CI: 'true'/);
+  assert.match(smoke, /QA_OUTPUT_DIR: \$\{\{ runner\.temp \}\}/);
+  // runner.* is not available in job-level env (invalid workflow); only in step env.
+  assert.doesNotMatch(smoke.split('steps:')[0], /runner\./);
+  assert.match(smoke, /node qa\/report\.mjs --summary --ci/);
 });

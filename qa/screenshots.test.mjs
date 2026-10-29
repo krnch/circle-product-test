@@ -35,7 +35,10 @@ test('private evidence directory is distinct from the publishable one and gitign
 });
 
 test('signup spec never imports the screenshot module', () => {
-  const spec = fs.readFileSync(new URL('./browser/signup.spec.mjs', import.meta.url), 'utf8');
+  const spec = fs.readFileSync(new URL('./browser/signup.spec.mjs', import.meta.url), 'utf8').replace(/^\s*\/\/.*$/gm, '');
+  // One-account policy: validation only, never submits or creates an account.
+  assert.doesNotMatch(spec, /\.click\(|press\(|\.submit\(|requestSubmit|identity\.mjs|CIRCLE_QA_|password\.fill\('[^']/);
+  assert.match(spec, /req\.method\(\) !== 'GET'/);
   assert.doesNotMatch(spec, /^import .*screenshots\.mjs/m);
   assert.doesNotMatch(spec, /from '\.\.\/screenshots\.mjs'/);
   assert.doesNotMatch(spec, /page\.screenshot/);

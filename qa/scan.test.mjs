@@ -26,7 +26,7 @@ test('non-luhn long digit strings are not flagged as cards', () => {
 });
 
 test('a clean sanitized report passes and findings never echo the matched value', () => {
-  const clean = JSON.stringify({ schema: 2, cases: [{ label: 'login_ui', route: '/login', status: 'PASS' }], accounts: [{ index: 0, local_part: 'circle-qa-synthetic-abc-1', synthetic: true }] });
+  const clean = JSON.stringify({ schema: 3, cases: [{ label: 'login_ui', route: '/login', status: 'PASS' }] });
   assert.deepEqual(scanText(clean, 'report'), []);
   const dirty = scanText('user@example.com', 'report');
   assert.equal(JSON.stringify(dirty).includes('user@example.com'), false);

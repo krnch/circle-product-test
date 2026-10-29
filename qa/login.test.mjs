@@ -40,6 +40,7 @@ test('login spec reads only env, takes no screenshots and never logs credentials
   assert.match(spec, /gate\(process\.env\)\.allowed/, 'live login must be gated by the QA window');
   assert.doesNotMatch(spec, /toBeAttached/, 'auth marker must be visible, not merely attached');
   assert.match(spec, /routeWebSocket\(/, 'websockets must be blocked like the other specs');
+  assert.match(spec, /isCI\(\) \? null : loginEnv/, 'login must never be read in CI');
   assert.doesNotMatch(spec, /\.catch\(\(\) => null\)\;\n\s*if \(!res/, 'navigation failures must not be skipped');
 });
 

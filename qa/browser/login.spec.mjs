@@ -6,12 +6,14 @@
 import { test, expect } from '@playwright/test';
 import { loginEnv, BROWSE_PATHS, PAYMENT, isAllowedNavigation } from '../login.mjs';
 import { gate } from '../guard.mjs';
+import { isCI } from '../ci.mjs';
 
 const origin = 'https://getcircle.chat';
 const HYDRATION_TIMEOUT = 15000;
-const creds = loginEnv(process.env);
+// Logged-in QA is VM-only: in CI the login is never even read from env.
+const creds = isCI() ? null : loginEnv(process.env);
 // Credentials alone never enable a live login: the fail-closed QA window must be open too.
-const live = () => Boolean(creds) && gate(process.env).allowed;
+const live = () => !isCI() && Boolean(creds) && gate(process.env).allowed;
 const LOGOUT = /log ?out|sign ?out/i;
 
 function emit(testInfo, payload) {
@@ -45,7 +47,7 @@ test.afterAll(async () => { await context?.close(); });
 
 async function blockedIfNoCreds(testInfo) {
   if (live()) return false;
-  const reason = creds ? 'gate_closed' : 'missing_credentials';
+  const reason = isCI() ? 'ci_not_allowed' : creds ? 'gate_closed' : 'missing_credentials';
   await emit(testInfo, { status: 'BLOCKED', reason });
   test.skip(true, reason);
   return true;
