@@ -51,7 +51,7 @@ jobs:
       - name: Logged-out public smoke
         env:
           QA_OUTPUT_DIR: ${{ runner.temp }}/circle-qa-output
-        run: npx --no-install playwright test qa/browser/public.spec.mjs qa/browser/signup.spec.mjs
+        run: npx --no-install playwright test qa/browser/public.spec.mjs qa/browser/signup.spec.mjs --reporter=line,./qa/report.mjs
       - name: Pass/fail summary
         if: always()
         env:
