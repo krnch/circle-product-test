@@ -23,7 +23,10 @@ test('one journey test keeps the session; dependents are BLOCKED login_failed', 
 });
 
 test('each step has a hard timeout and the journey fits the global budget', () => {
-  assert.match(spec, /Promise\.race\(\[body\(\), deadline\]\)/);
+  assert.match(spec, /Promise\.race\(\[work, deadline\]\)/);
+  // A timed-out step must be cancelled and settled before anything else runs.
+  assert.match(spec, /aborted = true;\s*await context\.close\(\)[\s\S]{0,40}await work\.catch/);
+  assert.match(spec, /if \(aborted\) \{ await report\(label, 'BLOCKED', 'step_aborted'\)/);
   const step = Number(spec.match(/const STEP_TIMEOUT = (\d+)/)[1]);
   const cfg = fs.readFileSync(new URL('../playwright.config.mjs', import.meta.url), 'utf8');
   const global = Number(cfg.match(/globalTimeout:(\d+)/)[1]);

@@ -11,7 +11,7 @@ const ALL = {login_ui:'/login',register_ui:'/register',signup_validation:'/regis
 const ALWAYS_BLOCKED = new Set(['payment']);
 const STATUSES = ['PASS','FAIL','BLOCKED','NOT_RUN','KNOWN'];
 // Only these blocker reasons may surface; anything else is collapsed.
-const REASONS = new Set(['rate_limited','form_not_rendered','missing_credentials','not_run','gate_closed','ci_not_allowed','vm_only','auth_only_route','login_rejected','no_error_shown','redirect_blocked','login_failed','step_timeout','known_site_issue','server_error_500','server_error_502','server_error_503']);
+const REASONS = new Set(['rate_limited','form_not_rendered','missing_credentials','not_run','gate_closed','ci_not_allowed','vm_only','auth_only_route','login_rejected','no_error_shown','redirect_blocked','login_failed','step_timeout','step_aborted','known_site_issue','server_error_500','server_error_502','server_error_503']);
 const KNOWN_IDS = /^[a-z0-9_]{1,60}$/;
 
 // Free text from the page (e.g. a login error) is re-redacted here: no emails, capped.

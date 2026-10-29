@@ -82,20 +82,28 @@ test('auth_journey', async ({ browser }, testInfo) => {
 
   const failures = [];
   let loggedIn = false;
+  let aborted = false;
   async function step(label, needsLogin, body) {
     if (needsLogin && !loggedIn) { await report(label, 'BLOCKED', 'login_failed'); return; }
+    if (aborted) { await report(label, 'BLOCKED', 'step_aborted'); return; }
     let timer;
     const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(new StepFailure('step_timeout', `${label} exceeded ${STEP_TIMEOUT}ms`)), STEP_TIMEOUT); });
+    const work = body();
     try {
-      await Promise.race([body(), deadline]);
+      await Promise.race([work, deadline]);
       await report(label, 'PASS');
     } catch (e) {
       const reason = e instanceof StepFailure ? e.reason : undefined;
       const detail = e instanceof StepFailure ? e.detail : String(e?.message || e).split('\n')[0];
       failures.push(label);
       await report(label, 'FAIL', reason, detail);
-      // Stop any still-running navigation of the timed-out step before the next one.
-      await page.goto('about:blank', { timeout: 5000 }).catch(() => {});
+      if (reason === 'step_timeout') {
+        // Promise.race cannot cancel body(): close the session so every pending
+        // action rejects, wait for it to settle, and run nothing else on it.
+        aborted = true;
+        await context.close().catch(() => {});
+        await work.catch(() => {});
+      }
     } finally {
       clearTimeout(timer);
     }
@@ -172,7 +180,7 @@ test('auth_journey', async ({ browser }, testInfo) => {
       await expect(page.locator('input[type="password"]')).toBeVisible({ timeout: HYDRATION_TIMEOUT });
     });
   } finally {
-    await context.close();
+    await context.close().catch(() => {});
   }
 
   expect(failures, `failed steps: ${failures.join(', ')}`).toEqual([]);
