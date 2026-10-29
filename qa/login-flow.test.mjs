@@ -13,6 +13,8 @@ test('login waits for the auth API response and reports why it stayed on /login'
 });
 
 test('dependent cases are BLOCKED login_failed (not silently skipped) when login fails', () => {
+  assert.doesNotMatch(spec, /mode: 'serial'/, 'serial mode skips dependent bodies after a failure');
+  assert.match(spec, /mode: 'default'/);
   for (const name of ['auth_browse', 'catalog_ui', 'auth_reload', 'auth_logout']) {
     assert.match(spec, new RegExp(`test\\('${name}'[\\s\\S]{0,120}blockedIfNotLoggedIn`), name);
   }

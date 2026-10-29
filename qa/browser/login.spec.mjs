@@ -27,7 +27,10 @@ function emit(testInfo, payload) {
   return testInfo.attach('qa-case', { body: Buffer.from(JSON.stringify(payload)), contentType: 'application/json' });
 }
 
-test.describe.configure({ mode: 'serial' });
+// Default (not serial) mode with workers:1 runs tests in order on one shared page,
+// but still enters dependent test bodies after an auth_login failure, so they can
+// report BLOCKED login_failed instead of being silently skipped by Playwright.
+test.describe.configure({ mode: 'default' });
 
 let context, page;
 const blockedNav = [];
