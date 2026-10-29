@@ -42,5 +42,7 @@ test('public smoke runs only logged-out specs, never login.spec, output outside 
   assert.doesNotMatch(smoke, /npm run qa/);
   assert.match(smoke, /CI: 'true'/);
   assert.match(smoke, /QA_OUTPUT_DIR: \$\{\{ runner\.temp \}\}/);
+  // runner.* is not available in job-level env (invalid workflow); only in step env.
+  assert.doesNotMatch(smoke.split('steps:')[0], /runner\./);
   assert.match(smoke, /node qa\/report\.mjs --summary --ci/);
 });
