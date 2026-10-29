@@ -37,7 +37,7 @@ test('unit job runs npm test and syntax checks', () => {
 
 test('public smoke runs only logged-out specs, never login.spec, output outside checkout', () => {
   const smoke = job('public-smoke');
-  assert.match(smoke, /playwright test qa\/browser\/public\.spec\.mjs qa\/browser\/signup\.spec\.mjs/);
+  assert.match(smoke, /playwright test qa\/browser\/public\.spec\.mjs qa\/browser\/signup\.spec\.mjs qa\/browser\/quality\.spec\.mjs /);
   assert.doesNotMatch(ci, /login\.spec/);
   assert.doesNotMatch(smoke, /npm run qa/);
   assert.match(smoke, /CI: 'true'/);
