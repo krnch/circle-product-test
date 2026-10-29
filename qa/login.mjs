@@ -8,6 +8,18 @@ export const ALLOWED_PATHS = ['/', '/login', HOME, '/explore', ...CATALOG_PATHS,
 // Routes the authenticated browse case must load (home + catalog browsing per QA_SCOPE.md).
 export const BROWSE_PATHS = [HOME, ...CATALOG_PATHS, '/sessions'];
 export const PAYMENT = /pay|checkout|billing|subscri|invoice|card|stripe|plan|upgrade|cart|orders|money/i;
+// Third-party payment hosts: never contacted.
+export const PAYMENT_HOSTS = /(^|\.)stripe\.(com|network)$/i;
+
+// Should this request be aborted as payment-related? The PAYMENT pattern applies to
+// page navigations and API calls only - NOT to same-origin static /assets/ bundles.
+// Root cause of the 2026-10-29 17:09Z FAIL: /assets/cart-*.js (a core module imported
+// by the entry bundle) matched /cart/, was aborted, and the SPA never mounted (#app empty).
+export function isPaymentRequest(url, origin, isNavigation) {
+  if (PAYMENT_HOSTS.test(url.hostname)) return true;
+  if (url.origin === origin && url.pathname.startsWith('/assets/')) return false;
+  return (isNavigation || url.pathname.startsWith('/api/')) && PAYMENT.test(url.pathname);
+}
 
 // Returns {email,password} or null. Never logs, never falls back to files or defaults.
 export function loginEnv(env = process.env) {
