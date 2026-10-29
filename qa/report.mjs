@@ -6,12 +6,12 @@ import { outputDir, resultsPath } from './output.mjs';
 
 // ONE account only: logged-in cases use the single pre-provisioned account from env.
 // Sign-up is checked for form validation only and is never submitted.
-const ALL = {login_ui:'/login',register_ui:'/register',signup_validation:'/register',catalog_ui:'/',console_errors:'/',perf_timings:'/',a11y_basics:'/login',navigation:'/register',payment:'/',auth_login:'/login',auth_browse:'/',auth_reload:'/dashboard',auth_logout:'/logout'};
+const ALL = {login_ui:'/login',register_ui:'/register',signup_validation:'/register',catalog_ui:'/',console_errors:'/',perf_timings:'/',a11y_basics:'/login',navigation:'/register',payment:'/',auth_login:'/login',auth_browse:'/dms',auth_reload:'/dms',auth_logout:'/me'};
 // Payment/billing stays BLOCKED unconditionally.
 const ALWAYS_BLOCKED = new Set(['payment']);
 const STATUSES = ['PASS','FAIL','BLOCKED','NOT_RUN','KNOWN'];
 // Only these blocker reasons may surface; anything else is collapsed.
-const REASONS = new Set(['rate_limited','form_not_rendered','missing_credentials','not_run','gate_closed','ci_not_allowed','vm_only','auth_only_route','login_rejected','no_error_shown','known_site_issue','server_error_500','server_error_502','server_error_503']);
+const REASONS = new Set(['rate_limited','form_not_rendered','missing_credentials','not_run','gate_closed','ci_not_allowed','vm_only','auth_only_route','login_rejected','no_error_shown','redirect_blocked','login_failed','known_site_issue','server_error_500','server_error_502','server_error_503']);
 const KNOWN_IDS = /^[a-z0-9_]{1,60}$/;
 
 // Free text from the page (e.g. a login error) is re-redacted here: no emails, capped.
@@ -23,7 +23,7 @@ function safeDetail(d) {
 
 export function sanitize(input = []) {
   const cases = Object.entries(ALL).map(([label,route])=>{
-    const found = input.find(c=>c.label===label);
+    const found = input.filter(c=>c.label===label).sort((a,b)=>(a.status==='BLOCKED')-(b.status==='BLOCKED'))[0];
     const status = ALWAYS_BLOCKED.has(label) ? 'BLOCKED'
       : STATUSES.includes(found?.status) ? found.status : 'NOT_RUN';
     const entry = {label,route,status};
