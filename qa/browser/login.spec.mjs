@@ -56,7 +56,7 @@ async function expectAuthenticated() {
   await expect(page.locator('#app')).not.toBeEmpty({ timeout: HYDRATION_TIMEOUT });
   expect(new URL(page.url()).pathname).not.toBe('/login');
   await expect(page.getByRole('button', { name: LOGOUT }).or(page.getByRole('link', { name: LOGOUT })).first())
-    .toBeAttached({ timeout: HYDRATION_TIMEOUT });
+    .toBeVisible({ timeout: HYDRATION_TIMEOUT });
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
 }
 
