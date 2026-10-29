@@ -6,12 +6,12 @@ import { outputDir, resultsPath } from './output.mjs';
 
 // ONE account only: logged-in cases use the single pre-provisioned account from env.
 // Sign-up is checked for form validation only and is never submitted.
-const ALL = {login_ui:'/login',register_ui:'/register',signup_validation:'/register',catalog_ui:'/',payment:'/',auth_login:'/login',auth_browse:'/',auth_reload:'/dashboard',auth_logout:'/logout'};
+const ALL = {login_ui:'/login',register_ui:'/register',signup_validation:'/register',catalog_ui:'/',console_errors:'/',perf_timings:'/',a11y_basics:'/login',navigation:'/register',payment:'/',auth_login:'/login',auth_browse:'/',auth_reload:'/dashboard',auth_logout:'/logout'};
 // Payment/billing stays BLOCKED unconditionally.
 const ALWAYS_BLOCKED = new Set(['payment']);
 const STATUSES = ['PASS','FAIL','BLOCKED','NOT_RUN'];
 // Only these blocker reasons may surface; anything else is collapsed.
-const REASONS = new Set(['rate_limited','form_not_rendered','missing_credentials','not_run','gate_closed','ci_not_allowed','server_error_500','server_error_502','server_error_503']);
+const REASONS = new Set(['rate_limited','form_not_rendered','missing_credentials','not_run','gate_closed','ci_not_allowed','vm_only','server_error_500','server_error_502','server_error_503']);
 
 export function sanitize(input = []) {
   const cases = Object.entries(ALL).map(([label,route])=>{
