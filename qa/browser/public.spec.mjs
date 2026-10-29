@@ -46,7 +46,7 @@ test('register_ui',async({page})=>{
   // starts empty. Reporting a FAIL here would be a harness artefact, not a defect.
   expect(await page.locator('input[type="email"]').first().inputValue()).toBe('');
 });
-test('catalog_ui',async({page})=>{
+test('catalog_ui',async({page},testInfo)=>{
   await page.goto(origin+'/',{waitUntil:'domcontentloaded'});
   // Wait for hydration before concluding the link is absent: before mount the
   // whole page is empty, so an instantaneous count() always reads zero.
@@ -54,8 +54,11 @@ test('catalog_ui',async({page})=>{
   const link=page.locator('a[href="/catalog"], a[href="/products"]').first();
   const present=await link.count().catch(()=>0)>0
     || await link.waitFor({state:'attached',timeout:HYDRATION_TIMEOUT}).then(()=>true).catch(()=>false);
-  // Honest skip: after a genuine wait there is no public catalog entry point.
-  test.skip(!present,'no public catalog link after hydration; authenticated catalog out of scope');
+  // Root cause (2026-10-29): the logged-out home only links /forgot-password and
+  // /register; the catalog exists only behind login. Report BLOCKED auth_only_route
+  // (covered by auth_browse on the VM), not an unexplained skip.
+  if(!present) await testInfo.attach('qa-case',{body:Buffer.from(JSON.stringify({status:'BLOCKED',reason:'auth_only_route'})),contentType:'application/json'});
+  test.skip(!present,'auth_only_route: no public catalog link; covered by auth_browse');
   const path=await link.getAttribute('href');
   await visit(page,path);
   await expect(page.locator('body')).toBeVisible();
