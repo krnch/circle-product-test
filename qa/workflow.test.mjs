@@ -10,8 +10,8 @@ function job(name) {
   return body;
 }
 
-test('only ci.yml exists; the old publishing workflow and Squad automation are gone', () => {
-  assert.deepEqual(readdirSync(dir).filter(f => /\.ya?ml$/.test(f)), ['ci.yml']);
+test('only ci.yml and qa-scheduled.yml exist; the old publish script is gone', () => {
+  assert.deepEqual(readdirSync(dir).filter(f => /\.ya?ml$/.test(f)).sort(), ['ci.yml', 'qa-scheduled.yml']);
   assert.equal(existsSync(new URL('../qa/publish.sh', import.meta.url)), false);
 });
 
@@ -45,4 +45,25 @@ test('public smoke runs only logged-out specs, never login.spec, output outside 
   // runner.* is not available in job-level env (invalid workflow); only in step env.
   assert.doesNotMatch(smoke.split('steps:')[0], /runner\./);
   assert.match(smoke, /node qa\/report\.mjs --summary --ci/);
+});
+
+const qa = readFileSync(new URL('qa-scheduled.yml', dir), 'utf8').replace(/^\s*#.*$/gm, '');
+test('qa-scheduled: schedule + dispatch only, gated, no artifacts, pinned actions', () => {
+  const triggers = qa.match(/^on:\n([\s\S]*?)^permissions:/m)[1];
+  assert.match(triggers, /schedule:/);
+  assert.match(triggers, /workflow_dispatch:/);
+  assert.doesNotMatch(triggers, /pull_request|push:|issue|repository_dispatch/);
+  assert.match(qa, /^permissions:\n  contents: read\n/m);
+  assert.equal((qa.match(/contents: write/g) || []).length, 1, 'write only in report job');
+  assert.doesNotMatch(qa, /upload-artifact|screenshot|trace|storageState/i);
+  assert.match(qa, /vars\.QA_ENABLED == 'true'/);
+  for (const use of qa.matchAll(/uses: ([^\n]+)/g)) assert.match(use[1], /^actions\/(checkout|setup-node)@[a-f0-9]{40}$/);
+  for (const m of qa.matchAll(/persist-credentials: (\w+)/g)) assert.equal(m[1], 'false');
+});
+test('qa-scheduled: secrets only via env, secret guard steps present, no echo of secrets', () => {
+  assert.match(qa, /CIRCLE_QA_EMAIL: \$\{\{ secrets\.QA_LOGIN_EMAIL \}\}/);
+  assert.equal((qa.match(/name: Secret guard/g) || []).length, 2);
+  assert.doesNotMatch(qa, /echo[^\n]*(secrets\.|CIRCLE_QA_|\$S1|\$S2)/);
+  assert.match(qa, /qa-results/);
+  assert.match(qa, /workers|login\.spec\.mjs/);
 });
