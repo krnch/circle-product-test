@@ -17,17 +17,17 @@
 import { test, expect } from '@playwright/test';
 import { loginEnv, HOME, CATALOG_PATHS, BROWSE_PATHS, isPaymentRequest, isAllowedNavigation, redact, SUBMIT } from '../login.mjs';
 import { gate } from '../guard.mjs';
-import { isCI } from '../ci.mjs';
+import { loginAllowed } from '../ci.mjs';
 
 const origin = 'https://getcircle.chat';
 const HYDRATION_TIMEOUT = 15000;
 // Hard per-step budget: a stalled action can never eat the next steps' time.
 // 5 steps x 25s + setup = 140s test timeout, inside the 420s global run timeout.
 const STEP_TIMEOUT = 25000;
-// Logged-in QA is VM-only: in CI the login is never even read from env.
-const creds = isCI() ? null : loginEnv(process.env);
+// In CI the login is never read unless the scheduled QA workflow opted in (QA_ACTIONS_LOGIN).
+const creds = loginAllowed() ? loginEnv(process.env) : null;
 // Credentials alone never enable a live login: the fail-closed QA window must be open too.
-const live = () => !isCI() && Boolean(creds) && gate(process.env).allowed;
+const live = () => loginAllowed() && Boolean(creds) && gate(process.env).allowed;
 const LOGOUT = /^\s*(log ?out|sign ?out)\s*$/i;
 const NOT_FOUND = /\b404\b|not found|page doesn.t exist/i;
 const STEPS = ['auth_login', 'auth_browse', 'catalog_ui', 'auth_reload', 'auth_logout'];
@@ -44,7 +44,7 @@ test('auth_journey', async ({ browser }, testInfo) => {
   });
 
   if (!live()) {
-    const reason = isCI() ? 'ci_not_allowed' : creds ? 'gate_closed' : 'missing_credentials';
+    const reason = !loginAllowed() ? 'ci_not_allowed' : creds ? 'gate_closed' : 'missing_credentials';
     for (const s of STEPS) await report(s, 'BLOCKED', reason);
     test.skip(true, reason);
     return;

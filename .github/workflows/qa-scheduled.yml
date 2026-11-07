@@ -1,0 +1,211 @@
+name: QA scheduled
+# Autonomous Circle QA on GitHub Actions (public repo: free minutes, zero VM compute).
+# Scope per QA_SCOPE.md: sequential, 1 worker, low rate; no load, no exploits, no
+# messages, no purchases. Gated by repo variable QA_ENABLED == 'true'.
+# Output: sanitized PASS/FAIL/BLOCKED table in the job summary + reports/latest.md on
+# branch qa-results. NO artifacts, screenshots or traces are uploaded; secret values
+# are never printed and a guard step fails the run if they appear in logs/summaries.
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+    - cron: '41 7 * * 1'
+  workflow_dispatch:
+    inputs:
+      squad:
+        description: Also run the Squad read-only triage job
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: qa-scheduled
+  cancel-in-progress: false
+jobs:
+  public-smoke:
+    if: vars.QA_ENABLED == 'true' && github.ref == 'refs/heads/main' && github.event.schedule != '41 7 * * 1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      rows: ${{ steps.rows.outputs.rows }}
+    env:
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.22.2'
+      - name: Install pinned dependency
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Logged-out public smoke
+        env:
+          QA_OUTPUT_DIR: ${{ runner.temp }}/qa-public
+        run: npx --no-install playwright test qa/browser/public.spec.mjs qa/browser/signup.spec.mjs qa/browser/quality.spec.mjs --reporter=line,./qa/report.mjs
+      - name: Rows
+        id: rows
+        if: always()
+        env:
+          QA_OUTPUT_DIR: ${{ runner.temp }}/qa-public
+        run: |
+          {
+            echo 'rows<<QA_EOF'
+            node qa/summary.mjs public
+            echo 'QA_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+  logged-in-journey:
+    needs: public-smoke
+    if: always() && needs.public-smoke.result != 'skipped' && vars.QA_ENABLED == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      rows: ${{ steps.rows.outputs.rows }}
+    env:
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.22.2'
+      - name: Install pinned dependency
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Logged-in journey (one test account, no images or recordings)
+        env:
+          QA_OUTPUT_DIR: ${{ runner.temp }}/qa-auth
+          QA_ACTIONS_LOGIN: 'true'
+          CIRCLE_QA_EMAIL: ${{ secrets.QA_LOGIN_EMAIL }}
+          CIRCLE_QA_PASSWORD: ${{ secrets.QA_LOGIN_PASSWORD }}
+        run: |
+          # Bounded 1h QA window for qa/guard.mjs, opened by this run only.
+          export QA_ENABLED=true
+          export QA_STARTED_AT=$(date -u -d '-1 min' +%Y-%m-%dT%H:%M:%SZ)
+          export QA_EXPIRES_AT=$(date -u -d '+60 min' +%Y-%m-%dT%H:%M:%SZ)
+          set -o pipefail
+          npx --no-install playwright test qa/browser/login.spec.mjs --reporter=line,./qa/report.mjs 2>&1 | tee "$RUNNER_TEMP/auth.log"
+      - name: Rows
+        id: rows
+        if: always()
+        env:
+          QA_OUTPUT_DIR: ${{ runner.temp }}/qa-auth
+        run: |
+          node qa/summary.mjs auth > "$RUNNER_TEMP/auth-rows.md"
+          {
+            echo 'rows<<QA_EOF'
+            cat "$RUNNER_TEMP/auth-rows.md"
+            echo 'QA_EOF'
+          } >> "$GITHUB_OUTPUT"
+      - name: Secret guard
+        if: always()
+        env:
+          S1: ${{ secrets.QA_LOGIN_EMAIL }}
+          S2: ${{ secrets.QA_LOGIN_PASSWORD }}
+          QA_OUTPUT_DIR: ${{ runner.temp }}/qa-auth
+        run: |
+          fail=0
+          for f in "$RUNNER_TEMP/auth.log" "$RUNNER_TEMP/auth-rows.md" "$GITHUB_STEP_SUMMARY" "$QA_OUTPUT_DIR"/*.json; do
+            [ -f "$f" ] || continue
+            for v in "$S1" "$S2"; do
+              if [ -n "$v" ] && grep -qF -- "$v" "$f"; then echo "secret value found in $(basename "$f")"; fail=1; fi
+            done
+          done
+          exit $fail
+
+  report:
+    needs: [public-smoke, logged-in-journey]
+    if: always() && needs.public-smoke.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Build summary
+        env:
+          PUBLIC_ROWS: ${{ needs.public-smoke.outputs.rows }}
+          AUTH_ROWS: ${{ needs.logged-in-journey.outputs.rows }}
+          PUBLIC_RESULT: ${{ needs.public-smoke.result }}
+          AUTH_RESULT: ${{ needs.logged-in-journey.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          now=$(date -u +%Y-%m-%dT%H:%MZ)
+          {
+            echo "# Circle QA — $now"
+            echo
+            echo "Run: $RUN_URL (public-smoke: $PUBLIC_RESULT, logged-in-journey: $AUTH_RESULT)"
+            echo
+            echo '| job | case | status | note |'
+            echo '|---|---|---|---|'
+            [ -n "$PUBLIC_ROWS" ] && echo "$PUBLIC_ROWS" || echo '| public | all | BLOCKED | not_run |'
+            [ -n "$AUTH_ROWS" ] && echo "$AUTH_ROWS" || echo '| auth | all | BLOCKED | not_run |'
+          } > "$RUNNER_TEMP/latest.md"
+          p=$(grep -c '| PASS |' "$RUNNER_TEMP/latest.md" || true)
+          f=$(grep -c '| FAIL |' "$RUNNER_TEMP/latest.md" || true)
+          b=$(grep -c '| BLOCKED |' "$RUNNER_TEMP/latest.md" || true)
+          echo "$now PASS=$p FAIL=$f BLOCKED=$b $RUN_URL" > "$RUNNER_TEMP/history-line"
+          cat "$RUNNER_TEMP/latest.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Secret guard
+        env:
+          S1: ${{ secrets.QA_LOGIN_EMAIL }}
+          S2: ${{ secrets.QA_LOGIN_PASSWORD }}
+        run: |
+          for v in "$S1" "$S2"; do
+            [ -n "$v" ] || continue
+            if grep -qF -- "$v" "$RUNNER_TEMP/latest.md" "$RUNNER_TEMP/history-line" "$GITHUB_STEP_SUMMARY"; then echo 'secret value found in report'; exit 1; fi
+          done
+          if grep -qiE '[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}' "$RUNNER_TEMP/latest.md"; then echo 'email-like text in report'; exit 1; fi
+      - name: Publish to qa-results branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir pub && cd pub
+          git init -q
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          url="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          if git fetch -q --depth 1 "$url" qa-results 2>/dev/null; then git checkout -q -b qa-results FETCH_HEAD; else git checkout -q --orphan qa-results; fi
+          mkdir -p reports
+          cp "$RUNNER_TEMP/latest.md" reports/latest.md
+          cat "$RUNNER_TEMP/history-line" >> reports/history.md
+          git add -f reports/latest.md reports/history.md
+          git commit -q -m "QA results $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q "$url" HEAD:qa-results
+
+  squad-triage:
+    # Weekly (Mon 07:41 UTC) or manual with squad=true. Read-only: no labels, issues,
+    # agents or model calls. Squad's AI agents need a Copilot token (not GITHUB_TOKEN),
+    # so this job only runs the CLI's offline commands and surfaces the latest QA report.
+    if: vars.QA_ENABLED == 'true' && (github.event.schedule == '41 7 * * 1' || inputs.squad)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.22.2'
+      - name: Squad read-only triage
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          {
+            echo '## Squad (read-only triage)'
+            echo '```'
+            npx -y @bradygaster/squad-cli@0.11.0 status 2>&1 | sed 's/\x1b\[[0-9;]*m//g'
+            npx -y @bradygaster/squad-cli@0.11.0 cast 2>&1 | sed 's/\x1b\[[0-9;]*m//g'
+            echo '```'
+            echo '### Latest QA (qa-results)'
+            curl -fsS "https://raw.githubusercontent.com/${REPO}/qa-results/reports/latest.md" || echo 'no qa-results yet'
+            echo
+            echo '### Last 7 runs'
+            echo '```'
+            curl -fsS "https://raw.githubusercontent.com/${REPO}/qa-results/reports/history.md" | tail -n 7 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

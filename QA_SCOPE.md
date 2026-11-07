@@ -13,7 +13,8 @@ Public repository: https://github.com/krnch/circle-product-test (CODE ONLY)
 
 ## Where tests run (hybrid)
 - GitHub Actions (`.github/workflows/ci.yml`, on pull_request and push to main): `npm test` unit tests plus the logged-OUT public smoke (`public.spec.mjs`, validation-only `signup.spec.mjs`). Output is pass/fail in the job summary only: no screenshots, no artifacts, no result branches, no secrets.
-- VM only (circleqa agent): logged-IN QA (`login.spec.mjs`). It never runs in Actions; in CI it does not even read the login env and reports BLOCKED (`ci_not_allowed`).
+- GitHub Actions scheduled (`.github/workflows/qa-scheduled.yml`, every 6h + manual, gated by repo var `QA_ENABLED=true`, approved by Karan 2026-10-28): logged-out smoke, then the logged-IN journey (`login.spec.mjs`) with the single test account from repo secrets `QA_LOGIN_EMAIL`/`QA_LOGIN_PASSWORD` (opt-in env `QA_ACTIONS_LOGIN=true`; `ci.yml` never reads the login and reports BLOCKED `ci_not_allowed`). No artifacts/screenshots/traces; secret-guard steps fail the run if a secret value appears. Sanitized PASS/FAIL/BLOCKED table goes to the job summary and `reports/latest.md` + `reports/history.md` on branch `qa-results`. Weekly Squad job: read-only `status`/`cast` + latest report (no model calls).
+- VM: optional; no longer required.
 
 ## Evidence and public/private separation
 - The repo holds code only. Results, screenshots and reports go to `$QA_OUTPUT_DIR`, which `qa/output.mjs` forces to be outside the checkout (symlink-safe).
@@ -24,4 +25,4 @@ Public repository: https://github.com/krnch/circle-product-test (CODE ONLY)
 - `qa/login.mjs` reads the login only from env; missing/partial env => BLOCKED (`missing_credentials`). Live login additionally requires the fail-closed `qa/guard.mjs` window (else `gate_closed`).
 - `qa/screenshots.mjs` is the only screenshot path: logged-out allowlisted pages only, refuses a session-bearing context, and is skipped entirely in CI. `login.spec.mjs` and `signup.spec.mjs` never take screenshots.
 - `qa/report.mjs` emits fixed labels and allowlisted reasons only; `qa/scan.mjs` scans results and screenshots for emails, tokens, cookies, passwords and card numbers.
-- Nothing is published: no publish script, no qa-results branch, no artifacts.
+- Only the sanitized fixed-label table is published (branch `qa-results`); no artifacts, no screenshots.
