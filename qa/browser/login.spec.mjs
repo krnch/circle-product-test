@@ -22,8 +22,9 @@ import { loginAllowed } from '../ci.mjs';
 const origin = 'https://getcircle.chat';
 const HYDRATION_TIMEOUT = 15000;
 // Hard per-step budget: a stalled action can never eat the next steps' time.
-// 5 steps x 25s + setup = 140s test timeout, inside the 420s global run timeout.
-const STEP_TIMEOUT = 25000;
+// 5 steps x 33s + setup = 180s test timeout, inside the 420s global run timeout.
+// auth_browse visits 4 routes (each may settle up to 4s), so 25s was too tight.
+const STEP_TIMEOUT = 33000;
 // In CI the login is never read unless the scheduled QA workflow opted in (QA_ACTIONS_LOGIN).
 const creds = loginAllowed() ? loginEnv(process.env) : null;
 // Credentials alone never enable a live login: the fail-closed QA window must be open too.
@@ -150,6 +151,9 @@ test('auth_journey', async ({ browser }, testInfo) => {
     await step('auth_browse', true, async () => {
       // Every intended route must load successfully AND show authenticated content.
       for (const path of BROWSE_PATHS) {
+        // Settle before each full navigation: leaving while the page's own token refresh
+        // is in flight burns the single-use refresh token and leaves #app empty (/dms FAIL).
+        await page.waitForLoadState('networkidle', { timeout: 4000 }).catch(() => {});
         const res = await page.goto(origin + path, { waitUntil: 'domcontentloaded' });
         if (!res?.ok()) throw new StepFailure(undefined, `HTTP ${res?.status() ?? 'none'} for ${path}`);
         await expectAuthenticated();

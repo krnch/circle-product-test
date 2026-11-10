@@ -38,6 +38,8 @@ test('each step has a hard timeout and the journey fits the global budget', () =
 test('every browse route checks for a hydrated 404 page', () => {
   const browse = spec.slice(spec.indexOf("step('auth_browse'"), spec.indexOf("step('catalog_ui'"));
   assert.match(browse, /getByText\(NOT_FOUND\)\)\.toHaveCount\(0\)/);
+  // Settle before each full navigation (refresh-token race left #app empty on /dms).
+  assert.match(browse, /waitForLoadState\('networkidle'[^)]*\)[\s\S]{0,60}page\.goto/);
 });
 
 test('reload waits for the session to settle; logout accepts the confirm dialog', () => {
