@@ -23,7 +23,7 @@ const origin = 'https://getcircle.chat';
 const HYDRATION_TIMEOUT = 15000;
 // Hard per-step budget: a stalled action can never eat the next steps' time.
 // 5 steps x 33s + setup = 180s test timeout, inside the 420s global run timeout.
-// auth_browse visits 4 routes (each may settle up to 4s), so 25s was too tight.
+// auth_browse settles once up front and after each of its 4 routes (up to 4s each).
 const STEP_TIMEOUT = 33000;
 // In CI the login is never read unless the scheduled QA workflow opted in (QA_ACTIONS_LOGIN).
 const creds = loginAllowed() ? loginEnv(process.env) : null;
@@ -153,9 +153,12 @@ test('auth_journey', async ({ browser }, testInfo) => {
       for (const path of BROWSE_PATHS) {
         // Settle before each full navigation: leaving while the page's own token refresh
         // is in flight burns the single-use refresh token and leaves #app empty (/dms FAIL).
+        // After the first route this is a no-op: the previous route already settled.
         await page.waitForLoadState('networkidle', { timeout: 4000 }).catch(() => {});
         const res = await page.goto(origin + path, { waitUntil: 'domcontentloaded' });
         if (!res?.ok()) throw new StepFailure(undefined, `HTTP ${res?.status() ?? 'none'} for ${path}`);
+        // Let the route's list data load before asserting content (flaky empty #app on /explore/shops).
+        await page.waitForLoadState('networkidle', { timeout: 4000 }).catch(() => {});
         await expectAuthenticated();
         await expect(page).toHaveURL(new RegExp(path.replace(/\//g, '\\/') + '$'));
         // A SPA error page can keep HTTP 200, the URL and the shell: check the content too.
@@ -169,7 +172,8 @@ test('auth_journey', async ({ browser }, testInfo) => {
       await expectAuthenticated();
       await page.locator(`a[href="${CATALOG_PATHS[0]}"]`).first().click();
       await expect(page).toHaveURL(/\/explore\/shops$/, { timeout: HYDRATION_TIMEOUT });
-      await expect(page.locator('#app')).not.toBeEmpty();
+      await page.waitForLoadState('networkidle', { timeout: 4000 }).catch(() => {});
+      await expect(page.locator('#app')).not.toBeEmpty({ timeout: HYDRATION_TIMEOUT });
       await expect(page.getByText(NOT_FOUND)).toHaveCount(0);
     });
 
