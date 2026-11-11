@@ -150,11 +150,11 @@ test('auth_journey', async ({ browser }, testInfo) => {
 
     await step('auth_browse', true, async () => {
       // Every intended route must load successfully AND show authenticated content.
-      // Settle before each full navigation: leaving while the page's own token refresh
-      // is in flight burns the single-use refresh token and leaves #app empty (/dms FAIL).
-      // The per-route settle below also covers the next navigation.
-      await page.waitForLoadState('networkidle', { timeout: 4000 }).catch(() => {});
       for (const path of BROWSE_PATHS) {
+        // Settle before each full navigation: leaving while the page's own token refresh
+        // is in flight burns the single-use refresh token and leaves #app empty (/dms FAIL).
+        // After the first route this is a no-op: the previous route already settled.
+        await page.waitForLoadState('networkidle', { timeout: 4000 }).catch(() => {});
         const res = await page.goto(origin + path, { waitUntil: 'domcontentloaded' });
         if (!res?.ok()) throw new StepFailure(undefined, `HTTP ${res?.status() ?? 'none'} for ${path}`);
         // Let the route's list data load before asserting content (flaky empty #app on /explore/shops).
