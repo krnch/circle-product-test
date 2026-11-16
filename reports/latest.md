@@ -1,6 +1,6 @@
-# Circle QA — 2026-11-16T06:47Z
+# Circle QA — 2026-11-16T22:19Z
 
-Run: https://github.com/krnch/circle-product-test/actions/runs/43818891161 (public-smoke: success, logged-in-journey: success)
+Run: https://github.com/krnch/circle-product-test/actions/runs/43968457736 (public-smoke: success, logged-in-journey: success)
 
 | job | case | status | note |
 |---|---|---|---|
