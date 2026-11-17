@@ -1,6 +1,6 @@
-# Circle QA — 2026-11-17T08:06Z
+# Circle QA — 2026-11-17T21:05Z
 
-Run: https://github.com/krnch/circle-product-test/actions/runs/44043647421 (public-smoke: success, logged-in-journey: failure)
+Run: https://github.com/krnch/circle-product-test/actions/runs/44175652137 (public-smoke: success, logged-in-journey: success)
 
 | job | case | status | note |
 |---|---|---|---|
@@ -13,8 +13,8 @@ Run: https://github.com/krnch/circle-product-test/actions/runs/44043647421 (publ
 | public | a11y_basics | PASS |  |
 | public | navigation | PASS |  |
 | public | payment | BLOCKED |  |
-| auth | catalog_ui | BLOCKED | login_failed |
-| auth | auth_login | FAIL | page.goto: Timeout 15000ms exceeded. url=/login auth=none |
-| auth | auth_browse | BLOCKED | login_failed |
-| auth | auth_reload | BLOCKED | login_failed |
-| auth | auth_logout | BLOCKED | login_failed |
+| auth | catalog_ui | PASS |  |
+| auth | auth_login | PASS |  |
+| auth | auth_browse | PASS |  |
+| auth | auth_reload | PASS |  |
+| auth | auth_logout | PASS |  |
