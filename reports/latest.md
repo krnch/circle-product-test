@@ -1,10 +1,10 @@
-# Circle QA — 2026-11-21T19:28Z
+# Circle QA — 2026-11-22T07:05Z
 
-Run: https://github.com/krnch/circle-product-test/actions/runs/44940925968 (public-smoke: success, logged-in-journey: success)
+Run: https://github.com/krnch/circle-product-test/actions/runs/44996439772 (public-smoke: failure, logged-in-journey: success)
 
 | job | case | status | note |
 |---|---|---|---|
-| public | login_ui | PASS |  |
+| public | login_ui | FAIL |  |
 | public | register_ui | PASS |  |
 | public | signup_validation | PASS |  |
 | public | catalog_ui | BLOCKED | auth_only_route |
